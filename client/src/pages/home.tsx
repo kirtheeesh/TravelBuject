@@ -67,12 +67,15 @@ export default function Home() {
     const fetchAndSubscribe = async () => {
       try {
         setIsLoading(true);
+        // Add a small delay to ensure session is fully established after sign-in
+        await new Promise(resolve => setTimeout(resolve, 200));
         // Initial immediate fetch
         const initialTrips = await getTrips(user.id);
         setTrips(initialTrips);
         setIsLoading(false);
       } catch (error) {
         console.error("Error fetching initial trips:", error);
+        setIsLoading(false);
       }
 
       // Then set up polling for real-time updates

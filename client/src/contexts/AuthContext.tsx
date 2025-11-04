@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleLogin } from "@react-oauth/google";
+import { useLocation } from "wouter";
 import type { User } from "@shared/schema";
 
 interface AuthContextType {
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return localStorage.getItem("exploring") === "true";
   });
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     const checkSession = async () => {
@@ -69,6 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           title: "Welcome to BkTravel!",
           description: `Signed in as ${userData.user.email}`,
         });
+        
+        // Navigate to home page after successful sign-in
+        setTimeout(() => {
+          setLocation("/home");
+        }, 100);
       } catch (error: any) {
         console.error("Sign-in error:", error);
         toast({
