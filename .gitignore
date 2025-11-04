@@ -7,6 +7,3 @@ vite.config.ts.*
 .local
 .replit
 .env
-desgin_guidelines.md
-replit.md
-typecheck_output.txt
