@@ -67,15 +67,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userData = await response.json();
         setUser(userData.user);
+        
+        // Verify session is established before navigating
+        const sessionResponse = await fetch("/api/auth/session", {
+          credentials: "include",
+        });
+        
+        if (!sessionResponse.ok) {
+          throw new Error("Session verification failed");
+        }
+        
         toast({
           title: "Welcome to BkTravel!",
           description: `Signed in as ${userData.user.email}`,
         });
         
-        // Navigate to home page after successful sign-in
-        setTimeout(() => {
-          setLocation("/home");
-        }, 100);
+        // Navigate to home page after session is confirmed
+        setLocation("/home");
       } catch (error: any) {
         console.error("Sign-in error:", error);
         toast({

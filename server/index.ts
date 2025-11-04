@@ -29,10 +29,17 @@ declare global {
 const corsOptions: CorsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
     // In development, allow all origins (Replit proxy, localhost, etc.)
-    // In production, restrict to specific origins
     if (process.env.NODE_ENV === 'development') {
       callback(null, true);
-    } else if (!origin || origin === process.env.VITE_API_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return;
+    }
+    
+    // In production, use explicit allowed origins from environment variable
+    const allowedOrigins = process.env.ALLOWED_ORIGINS 
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+      : ['https://bktravelbudject.onrender.com'];
+    
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));

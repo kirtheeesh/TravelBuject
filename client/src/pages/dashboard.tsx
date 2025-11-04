@@ -70,42 +70,20 @@ export default function Dashboard() {
       return;
     }
 
-    let isMounted = true;
-
-    // Add a small delay to ensure session is ready, then fetch trip
-    const fetchTrip = async () => {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const unsubscribe = subscribeToTrip(
-        tripId,
-        (updatedTrip) => {
-          if (isMounted) {
-            setTrip(updatedTrip);
-            setIsLoading(false);
-          }
-        },
-        (error) => {
-          console.error("Error loading trip:", error);
-          if (isMounted) {
-            setIsLoading(false);
-          }
-        }
-      );
-
-      return unsubscribe;
-    };
-
-    let unsubscribe: (() => void) | null = null;
-    fetchTrip().then((unsub) => {
-      unsubscribe = unsub;
-    });
-
-    return () => {
-      isMounted = false;
-      if (unsubscribe) {
-        unsubscribe();
+    // Subscribe to trip updates
+    const unsubscribe = subscribeToTrip(
+      tripId,
+      (updatedTrip) => {
+        setTrip(updatedTrip);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error loading trip:", error);
+        setIsLoading(false);
       }
-    };
+    );
+
+    return () => unsubscribe();
   }, [tripId, isExploring]);
 
   // Real-time listener for budget items with notifications
