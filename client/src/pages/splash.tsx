@@ -1,13 +1,13 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Plane, Users, TrendingUp, Zap, Shield, LogIn } from "lucide-react";
+import { Plane, Users, TrendingUp, Shield, LogIn } from "lucide-react";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { IndianRupee } from "lucide-react";
 
 export default function Splash() {
-  const { user, loading, signInWithGoogle, isExploring, enterExploreMode, isAuthLoading } = useAuth();
+  const { user, loading, signInWithGoogle, isAuthLoading } = useAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -16,25 +16,19 @@ export default function Splash() {
     }
   }, [user, loading, setLocation]);
 
-  useEffect(() => {
-    if (isExploring && !loading) {
-      setLocation("/home");
-    }
-  }, [isExploring, loading, setLocation]);
-
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-white border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700">
+    <div className="min-h-screen bg-white">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -left-4 top-20 h-72 w-72 rounded-full bg-purple-500 opacity-20 blur-3xl" />
+        <div className="absolute -left-4 top-20 h-72 w-72 rounded-full bg-white opacity-20 blur-3xl" />
         <div className="absolute right-10 top-40 h-96 w-96 rounded-full bg-blue-400 opacity-20 blur-3xl" />
         <div className="absolute bottom-20 left-1/3 h-80 w-80 rounded-full bg-indigo-400 opacity-20 blur-3xl" />
       </div>
@@ -48,44 +42,16 @@ export default function Splash() {
               <Plane className="h-10 w-10 text-blue-600 md:h-12 md:w-12" />
             </div>
           </div>
-          <h1 className="mb-4 text-4xl font-bold text-white md:text-6xl lg:text-7xl">
+          <h1 className="mb-4 text-4xl font-bold text-blue-600 md:text-6xl lg:text-7xl">
             BkTravel Budget Manager
           </h1>
-          <p className="text-lg text-white/90 md:text-xl">
+          <p className="text-lg text-blue-500 md:text-xl">
             Plan, Track & Split Your Travel Expenses Effortlessly!
           </p>
         </div>
 
         {/* Main CTA Cards */}
-        <div className="mb-16 grid gap-6 md:grid-cols-2">
-          {/* Instant Use Card */}
-          <Card className="group relative overflow-hidden border-0 bg-white p-8 shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-purple-500/50">
-            <div className="absolute right-0 top-0 h-32 w-32 rounded-bl-full bg-gradient-to-br from-purple-400 to-purple-600 opacity-10" />
-            <div className="relative">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
-                <Zap className="h-7 w-7 text-white" />
-              </div>
-              <h3 className="mb-2 text-2xl font-bold text-gray-900">Start Instantly</h3>
-              <p className="mb-6 text-gray-600">
-                Try the app right away! No sign-up required. Perfect for quick budgeting.
-              </p>
-              <div className="mb-6 rounded-lg bg-purple-50 p-3">
-                <p className="text-sm font-medium text-purple-900">
-                  ⚡ Instant access • 💾 Temporary storage • 🚀 No commitment
-                </p>
-              </div>
-              <Button
-                size="lg"
-                onClick={enterExploreMode}
-                className="h-12 w-full bg-gradient-to-r from-purple-600 to-purple-700 text-base font-semibold shadow-lg transition-all hover:from-purple-700 hover:to-purple-800"
-                data-testid="button-explore"
-              >
-                <Zap className="mr-2 h-5 w-5" />
-                Try Without Sign In
-              </Button>
-            </div>
-          </Card>
-
+        <div className="mb-16 grid gap-6 md:grid-cols-1 max-w-md mx-auto">
           {/* Sign In Card */}
           <Card className="group relative overflow-hidden border-0 bg-white p-8 shadow-2xl transition-all duration-300 hover:scale-105 hover:shadow-blue-500/50">
             <div className="absolute right-0 top-0 h-32 w-32 rounded-bl-full bg-gradient-to-br from-blue-400 to-blue-600 opacity-10" />
@@ -98,9 +64,6 @@ export default function Splash() {
                 Sign in with Google to save your trips permanently and access them anytime.
               </p>
               <div className="mb-6 rounded-lg bg-blue-50 p-3">
-                <p className="text-sm font-medium text-blue-900">
-                  ✅ Permanent storage • 🔒 Secure sync • 📱 Multi-device access
-                </p>
               </div>
               <Button
                 size="lg"
@@ -126,8 +89,8 @@ export default function Splash() {
         </div>
 
         {/* Features Section */}
-        <div className="rounded-3xl bg-white/10 p-8 backdrop-blur-md md:p-12">
-          <h2 className="mb-8 text-center text-3xl font-bold text-white md:text-4xl">
+        <div className="rounded-3xl bg-blue-50 p-8 md:p-12">
+          <h2 className="mb-8 text-center text-3xl font-bold text-blue-600 md:text-4xl">
             Powerful Features for Your Travels
           </h2>
           <div className="grid gap-8 md:grid-cols-3">
@@ -137,8 +100,8 @@ export default function Splash() {
                   <Users className="h-8 w-8 text-white" />
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-white">Group Trips</h3>
-              <p className="text-white/80">
+              <h3 className="mb-2 text-xl font-bold text-blue-600">Group Trips</h3>
+              <p className="text-blue-500">
                 Add unlimited members and track expenses for everyone in your group
               </p>
             </div>
@@ -149,8 +112,8 @@ export default function Splash() {
                   <IndianRupee className="h-8 w-8 text-white" />
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-white">Smart Splitting</h3>
-              <p className="text-white/80">
+              <h3 className="mb-2 text-xl font-bold text-blue-600">Smart Splitting</h3>
+              <p className="text-blue-500">
                 Automatically calculate and split costs among selected members
               </p>
             </div>
@@ -161,8 +124,8 @@ export default function Splash() {
                   <TrendingUp className="h-8 w-8 text-white" />
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-white">Visual Analytics</h3>
-              <p className="text-white/80">
+              <h3 className="mb-2 text-xl font-bold text-blue-600">Visual Analytics</h3>
+              <p className="text-blue-500">
                 Beautiful charts and graphs to visualize your spending patterns
               </p>
             </div>
