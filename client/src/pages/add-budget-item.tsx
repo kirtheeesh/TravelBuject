@@ -289,6 +289,22 @@ export default function AddBudgetItem() {
     }
   };
 
+  const toggleAllMembers = (itemTempId: string) => {
+    const item = budgetItems.find((i) => i.tempId === itemTempId);
+    if (!item || !trip) return;
+
+    const allMemberIds = trip.members.map((member) => member.id);
+    const isAllSelected = allMemberIds.every(id => item.memberIds.includes(id));
+
+    if (isAllSelected) {
+      // Deselect all
+      updateItem(itemTempId, { memberIds: [] });
+    } else {
+      // Select all
+      updateItem(itemTempId, { memberIds: allMemberIds });
+    }
+  };
+
   const handleSubmit = () => {
     const invalidItems = budgetItems.filter(
       (item) => !item.name || item.amount <= 0 || item.memberIds.length === 0
@@ -453,6 +469,17 @@ export default function AddBudgetItem() {
                       </div>
 
                       <div>
+                        <div className="flex items-center space-x-2 mb-3">
+                          <Checkbox
+                            id={`split-all-${item.tempId}`}
+                            checked={trip.members.every(member => item.memberIds.includes(member.id))}
+                            onCheckedChange={() => toggleAllMembers(item.tempId)}
+                            data-testid={`checkbox-split-all-${itemIndex}`}
+                          />
+                          <Label htmlFor={`split-all-${item.tempId}`} className="text-sm font-medium">
+                            Split for all
+                          </Label>
+                        </div>
                         <Label>Split between:</Label>
                         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                           {trip.members.map((member) => (

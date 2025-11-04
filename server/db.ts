@@ -23,6 +23,19 @@ export interface BudgetItem {
   createdAt: number;
 }
 
+export interface SpendingItem {
+  _id?: string;
+  id?: string;
+  tripId: string;
+  budgetItemId: string;
+  name: string;
+  amount: number;
+  category: string;
+  memberIds: string[];
+  createdAt: number;
+  isCompleted: boolean;
+}
+
 export interface DBUser {
   _id?: string;
   id?: string;
@@ -63,6 +76,12 @@ export async function connectDB(): Promise<Db> {
       await db.collection("budgetItems").createIndex({ tripId: 1, createdAt: -1 });
     }
 
+    if (!collectionNames.includes("spendingItems")) {
+      await db.createCollection("spendingItems");
+      await db.collection("spendingItems").createIndex({ tripId: 1, createdAt: -1 });
+      await db.collection("spendingItems").createIndex({ budgetItemId: 1 });
+    }
+
     if (!collectionNames.includes("users")) {
       await db.createCollection("users");
       await db.collection("users").createIndex({ email: 1 }, { unique: true });
@@ -98,6 +117,10 @@ export function getTripsCollection(): Collection<Trip> {
 
 export function getBudgetItemsCollection(): Collection<BudgetItem> {
   return getDB().collection<BudgetItem>("budgetItems");
+}
+
+export function getSpendingItemsCollection(): Collection<SpendingItem> {
+  return getDB().collection<SpendingItem>("spendingItems");
 }
 
 export function getUsersCollection(): Collection<DBUser> {

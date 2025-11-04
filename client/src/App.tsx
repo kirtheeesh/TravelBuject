@@ -11,6 +11,8 @@ import AuthLoading from "@/pages/auth-loading";
 import CreateTrip from "@/pages/create-trip";
 import Dashboard from "@/pages/dashboard";
 import AddBudgetItem from "@/pages/add-budget-item";
+import Spending from "@/pages/spending";
+import InvitePage from "@/pages/invite";
 import NotFound from "@/pages/not-found";
 
 // Protected route wrapper
@@ -37,6 +39,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Splash} />
       <Route path="/auth-loading" component={AuthLoading} />
+      <Route path="/invite/:code" component={InvitePage} />
       <Route path="/home">
         {() => <ProtectedRoute component={Home} />}
       </Route>
@@ -48,6 +51,9 @@ function Router() {
       </Route>
       <Route path="/trip/:id/add-items">
         {() => <ProtectedRoute component={AddBudgetItem} />}
+      </Route>
+      <Route path="/spending/:id">
+        {() => <ProtectedRoute component={Spending} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -1,8 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { connectDB, getTripsCollection, getBudgetItemsCollection, getUsersCollection } from "./db";
+import { connectDB, getTripsCollection, getBudgetItemsCollection, getSpendingItemsCollection, getUsersCollection } from "./db";
 import { verifyGoogleToken } from "./auth";
 import { randomUUID } from "crypto";
+
+const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 
 interface SessionUser {
   id: string;
@@ -115,12 +117,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[POST /api/trips] Creating trip:", { tripId, userId, name, members: members?.length });
 
+      // Process members to set proper status and timestamps
+      const processedMembers = members.map((member: any) => ({
+        ...member,
+        status: member.status || (member.email ? "invited" : "joined"),
+        invitedAt: member.email ? Date.now() : undefined,
+        joinedAt: !member.email ? Date.now() : undefined,
+      }));
+
       await tripsCollection.insertOne({
         _id: tripId,
         id: tripId,
         userId,
         name,
-        members,
+        members: processedMembers,
         createdAt: Date.now(),
       });
 
@@ -155,13 +165,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trips", ensureAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const budgetItemsCollection = getBudgetItemsCollection();
 
-      console.log("[GET /api/trips] Fetching trips for userId:", userId);
-      
+      console.log("[GET /api/trips] Fetching trips for userId:", userId, "email:", userEmail);
+
+      // Find trips where user is owner OR member
       const trips = await tripsCollection
-        .find({ userId })
+        .find({
+          $or: [
+            { userId }, // User is the owner
+            { "members.email": userEmail } // User is a member
+          ]
+        })
         .sort({ createdAt: -1 })
         .toArray();
       
@@ -204,22 +221,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const budgetItemsCollection = getBudgetItemsCollection();
 
-      console.log("[GET /api/trips/:id] Looking for trip:", { tripId, userId, sessionId: req.sessionID });
+      console.log("[GET /api/trips/:id] Looking for trip:", { tripId, userId, userEmail, sessionId: req.sessionID });
 
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      // First try to find trip where user is the owner
+      let trip = await tripsCollection.findOne({ _id: tripId, userId });
 
+      // If not found as owner, check if user is a member of the trip
       if (!trip) {
-        console.log("[GET /api/trips/:id] Trip not found. Searching in DB for this tripId...");
-        // Debug: check if trip exists without userId filter
-        const tripWithoutUserFilter = await tripsCollection.findOne({ _id: tripId });
-        console.log("[GET /api/trips/:id] Trip exists in DB?", !!tripWithoutUserFilter);
-        if (tripWithoutUserFilter) {
-          console.log("[GET /api/trips/:id] Trip exists but with different userId. Trip userId:", tripWithoutUserFilter.userId, "Session userId:", userId);
+        trip = await tripsCollection.findOne({
+          _id: tripId,
+          "members.email": userEmail
+        });
+
+        if (!trip) {
+          console.log("[GET /api/trips/:id] Trip not found for user");
+          return res.status(404).json({ message: "Trip not found" });
         }
-        return res.status(404).json({ message: "Trip not found" });
       }
       
       console.log("[GET /api/trips/:id] Trip found:", { tripId, name: trip.name });
@@ -349,12 +370,408 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Spending items routes
+  app.post("/api/trips/:id/spending-items", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const tripId = req.params.id;
+      const userId = req.session!.userId!;
+      const { budgetItemId, name, amount, category, memberIds } = req.body;
+      const tripsCollection = getTripsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      const itemId = randomUUID();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      await spendingItemsCollection.insertOne({
+        _id: itemId,
+        id: itemId,
+        tripId,
+        budgetItemId,
+        name,
+        amount,
+        category,
+        memberIds,
+        createdAt: Date.now(),
+        isCompleted: false,
+      });
+
+      res.json({ id: itemId });
+    } catch (error) {
+      console.error("Spending item creation error:", error);
+      res.status(500).json({ message: "Failed to create spending item" });
+    }
+  });
+
+  app.get("/api/trips/:id/spending-items", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const tripId = req.params.id;
+      const userId = req.session!.userId!;
+      const tripsCollection = getTripsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      const items = await spendingItemsCollection
+        .find({ tripId })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      const formattedItems = items.map((item) => ({
+        id: item._id || item.id,
+        tripId: item.tripId,
+        budgetItemId: item.budgetItemId,
+        name: item.name,
+        amount: item.amount,
+        category: item.category,
+        memberIds: item.memberIds,
+        createdAt: item.createdAt,
+        isCompleted: item.isCompleted,
+      }));
+
+      res.json({ items: formattedItems });
+    } catch (error) {
+      console.error("Get spending items error:", error);
+      res.status(500).json({ message: "Failed to fetch spending items" });
+    }
+  });
+
+  app.patch("/api/trips/:tripId/spending-items/:itemId", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { tripId, itemId } = req.params;
+      const userId = req.session!.userId!;
+      const updates = req.body;
+      const tripsCollection = getTripsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      const result = await spendingItemsCollection.updateOne(
+        { $or: [{ _id: itemId }, { id: itemId }], tripId },
+        { $set: updates }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ message: "Spending item not found" });
+      }
+
+      res.json({ message: "Spending item updated successfully" });
+    } catch (error) {
+      console.error("Update spending item error:", error);
+      res.status(500).json({ message: "Failed to update spending item" });
+    }
+  });
+
+  app.delete("/api/trips/:tripId/spending-items/:itemId", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { tripId, itemId } = req.params;
+      const userId = req.session!.userId!;
+      const tripsCollection = getTripsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      const result = await spendingItemsCollection.deleteOne({
+        $or: [{ _id: itemId }, { id: itemId }],
+        tripId,
+      });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ message: "Spending item not found" });
+      }
+
+      res.json({ message: "Spending item deleted successfully" });
+    } catch (error) {
+      console.error("Delete spending item error:", error);
+      res.status(500).json({ message: "Failed to delete spending item" });
+    }
+  });
+
+  app.post("/api/trips/:id/invite-members", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const tripId = req.params.id;
+      const userId = req.session!.userId!;
+      const { members } = req.body; // Array of { name: string, email: string }
+      const tripsCollection = getTripsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      console.log("[POST /api/trips/:id/invite-members] Inviting members:", { tripId, members: members?.length });
+
+      // Process new members
+      const newMembers = members.map((member: any, index: number) => {
+        const invitationCode = randomUUID();
+        return {
+          id: randomUUID(),
+          name: member.name,
+          email: member.email,
+          color: MEMBER_COLORS[(trip.members.length + index) % MEMBER_COLORS.length],
+          status: "invited",
+          invitedAt: Date.now(),
+          invitationCode,
+        };
+      });
+
+      // Add new members to the trip
+      const updatedMembers = [...trip.members, ...newMembers];
+
+      await tripsCollection.updateOne(
+        { _id: tripId, userId },
+        { $set: { members: updatedMembers } }
+      );
+
+      console.log("[POST /api/trips/:id/invite-members] Members invited successfully");
+      res.json({
+        message: "Members invited successfully",
+        invitedMembers: newMembers,
+        invitationCodes: newMembers.map((member: any) => ({
+          name: member.name,
+          email: member.email,
+          code: member.invitationCode
+        }))
+      });
+    } catch (error) {
+      console.error("Invite members error:", error);
+      res.status(500).json({ message: "Failed to invite members" });
+    }
+  });
+
+  app.post("/api/join/:code", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const userEmail = req.session!.userEmail!;
+      const tripsCollection = getTripsCollection();
+
+      console.log("[POST /api/join/:code] Joining trip with code:", code, "for user:", userEmail);
+
+      // Find the trip that contains this invitation code
+      const trip = await tripsCollection.findOne({
+        "members.invitationCode": code,
+        "members.email": userEmail
+      });
+
+      if (!trip) {
+        console.log("[POST /api/join/:code] No trip found with this code for this user");
+        return res.status(404).json({ message: "Invalid invitation code or you are not invited to this trip" });
+      }
+
+      // Find the member with this invitation code
+      const memberIndex = trip.members.findIndex((member: any) => member.invitationCode === code);
+      if (memberIndex === -1) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      const member = trip.members[memberIndex];
+      const tripIdValue = trip._id || trip.id;
+      const joinedMemberIdsBefore = trip.members
+        .filter((tripMember: any) => tripMember.status === "joined")
+        .map((tripMember: any) => tripMember.id);
+
+      if (member.status === "joined") {
+        return res.json({ message: "You have already joined this trip", tripId: trip._id });
+      }
+
+      const updatedMembers = [...trip.members];
+      updatedMembers[memberIndex] = {
+        ...member,
+        status: "joined",
+        joinedAt: Date.now(),
+      };
+
+      await tripsCollection.updateOne(
+        { _id: tripIdValue },
+        { $set: { members: updatedMembers } }
+      );
+
+      if (joinedMemberIdsBefore.length > 0) {
+        const budgetItemsCollection = getBudgetItemsCollection();
+        const budgetItems = await budgetItemsCollection
+          .find({ tripId: tripIdValue })
+          .toArray();
+        const itemsToUpdate = budgetItems.filter((item: any) => {
+          const memberIds = Array.isArray(item.memberIds) ? item.memberIds : [];
+          if (memberIds.includes(member.id)) {
+            return false;
+          }
+          if (memberIds.length !== joinedMemberIdsBefore.length) {
+            return false;
+          }
+          return joinedMemberIdsBefore.every((id) => memberIds.includes(id));
+        });
+        for (const item of itemsToUpdate) {
+          const identifier = item._id ? { _id: item._id } : { id: item.id };
+          await budgetItemsCollection.updateOne(
+            { ...identifier, tripId: tripIdValue },
+            { $addToSet: { memberIds: member.id } }
+          );
+        }
+      }
+
+      console.log("[POST /api/join/:code] Member joined successfully:", member.name);
+      res.json({
+        message: "Successfully joined the trip!",
+        tripId: trip._id,
+        tripName: trip.name
+      });
+    } catch (error) {
+      console.error("Join trip error:", error);
+      res.status(500).json({ message: "Failed to join trip" });
+    }
+  });
+
+  app.delete("/api/join/:code", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const userEmail = req.session!.userEmail!;
+      const tripsCollection = getTripsCollection();
+      const budgetItemsCollection = getBudgetItemsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      console.log("[DELETE /api/join/:code] Rejecting invitation with code:", code, "for user:", userEmail);
+
+      const trip = await tripsCollection.findOne({
+        "members.invitationCode": code,
+        "members.email": userEmail
+      });
+
+      if (!trip) {
+        console.log("[DELETE /api/join/:code] No trip found with this code for this user");
+        return res.status(404).json({ message: "Invalid invitation code or you are not invited to this trip" });
+      }
+
+      const memberIndex = trip.members.findIndex((member: any) => member.invitationCode === code && member.email === userEmail);
+      if (memberIndex === -1) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      const member = trip.members[memberIndex];
+
+      if (member.status === "joined") {
+        return res.status(400).json({ message: "You have already joined this trip" });
+      }
+
+      const tripIdValue = trip._id || trip.id;
+      const tripIdentifier = trip._id ? { _id: trip._id } : { id: trip.id };
+      const updatedMembers = trip.members.filter((_: any, index: number) => index !== memberIndex);
+
+      await tripsCollection.updateOne(
+        tripIdentifier,
+        { $set: { members: updatedMembers } }
+      );
+
+      const memberId = member.id;
+
+      if (memberId) {
+        await budgetItemsCollection.updateMany(
+          { tripId: tripIdValue },
+          { $pull: { memberIds: memberId } }
+        );
+        await budgetItemsCollection.deleteMany({ tripId: tripIdValue, memberIds: { $size: 0 } });
+        await spendingItemsCollection.updateMany(
+          { tripId: tripIdValue },
+          { $pull: { memberIds: memberId } }
+        );
+        await spendingItemsCollection.deleteMany({ tripId: tripIdValue, memberIds: { $size: 0 } });
+      }
+
+      console.log("[DELETE /api/join/:code] Invitation rejected for:", member.email);
+      res.json({ message: "Invitation rejected" });
+    } catch (error) {
+      console.error("Reject invitation error:", error);
+      res.status(500).json({ message: "Failed to reject invitation" });
+    }
+  });
+
+  app.delete("/api/trips/:tripId/members/:memberId", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { tripId, memberId } = req.params;
+      const userEmail = req.session!.userEmail!;
+      const tripsCollection = getTripsCollection();
+      const budgetItemsCollection = getBudgetItemsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
+
+      console.log("[DELETE /api/trips/:tripId/members/:memberId] Leaving trip:", { tripId, memberId, userEmail });
+
+      const trip = await tripsCollection.findOne({
+        _id: tripId,
+        "members.id": memberId
+      });
+
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const memberIndex = trip.members.findIndex((member: any) => member.id === memberId);
+      if (memberIndex === -1) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      const member = trip.members[memberIndex];
+
+      if (member.status === "owner") {
+        return res.status(400).json({ message: "Trip owner cannot leave the trip" });
+      }
+
+      if (member.email && member.email !== userEmail) {
+        return res.status(403).json({ message: "You can only remove yourself from a trip" });
+      }
+
+      const tripIdValue = trip._id || trip.id;
+      const tripIdentifier = trip._id ? { _id: trip._id } : { id: trip.id };
+      const updatedMembers = trip.members.filter((_: any, index: number) => index !== memberIndex);
+
+      await tripsCollection.updateOne(
+        tripIdentifier,
+        { $set: { members: updatedMembers } }
+      );
+
+      await budgetItemsCollection.updateMany(
+        { tripId: tripIdValue },
+        { $pull: { memberIds: memberId } }
+      );
+      await budgetItemsCollection.deleteMany({ tripId: tripIdValue, memberIds: { $size: 0 } });
+
+      await spendingItemsCollection.updateMany(
+        { tripId: tripIdValue },
+        { $pull: { memberIds: memberId } }
+      );
+      await spendingItemsCollection.deleteMany({ tripId: tripIdValue, memberIds: { $size: 0 } });
+
+      console.log("[DELETE /api/trips/:tripId/members/:memberId] Member left trip successfully:", member.email || member.name);
+      res.json({ message: "Left trip successfully" });
+    } catch (error) {
+      console.error("Leave trip error:", error);
+      res.status(500).json({ message: "Failed to leave trip" });
+    }
+  });
+
   app.delete("/api/trips/:id", ensureAuth, async (req: Request, res: Response) => {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
       const tripsCollection = getTripsCollection();
       const budgetItemsCollection = getBudgetItemsCollection();
+      const spendingItemsCollection = getSpendingItemsCollection();
 
       // Verify that the trip belongs to the current user
       const trip = await tripsCollection.findOne({ _id: tripId, userId });
@@ -367,6 +784,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Delete all budget items for this trip
       const budgetItemsResult = await budgetItemsCollection.deleteMany({ tripId });
       console.log(`[DELETE /api/trips/:id] Deleted ${budgetItemsResult.deletedCount} budget items`);
+
+      // Delete all spending items for this trip
+      const spendingItemsResult = await spendingItemsCollection.deleteMany({ tripId });
+      console.log(`[DELETE /api/trips/:id] Deleted ${spendingItemsResult.deletedCount} spending items`);
 
       // Delete the trip
       const tripResult = await tripsCollection.deleteOne({ _id: tripId, userId });

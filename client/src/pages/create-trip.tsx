@@ -129,24 +129,27 @@ export default function CreateTrip() {
     defaultValues: {
       name: "",
       memberCount: 2,
-      memberNames: ["", ""],
+      memberEmails: [
+        { name: "", email: "" },
+        { name: "", email: "" }
+      ],
     },
   });
 
   const memberCount = form.watch("memberCount");
-  const memberNames = form.watch("memberNames");
+  const memberEmails = form.watch("memberEmails");
 
-  // Update member names array when count changes
+  // Update member emails array when count changes
   const handleMemberCountChange = (value: string) => {
     const count = parseInt(value);
     form.setValue("memberCount", count);
-    const currentNames = form.getValues("memberNames");
-    if (currentNames.length < count) {
-      // Add empty strings for new members
-      form.setValue("memberNames", [...currentNames, ...Array(count - currentNames.length).fill("")]);
-    } else if (currentNames.length > count) {
+    const currentMembers = form.getValues("memberEmails");
+    if (currentMembers.length < count) {
+      // Add empty objects for new members
+      form.setValue("memberEmails", [...currentMembers, ...Array(count - currentMembers.length).fill({ name: "", email: "" })]);
+    } else if (currentMembers.length > count) {
       // Remove excess members
-      form.setValue("memberNames", currentNames.slice(0, count));
+      form.setValue("memberEmails", currentMembers.slice(0, count));
     }
   };
 
@@ -206,7 +209,10 @@ export default function CreateTrip() {
       }
       return await createTrip(user.id, {
         name: data.name,
-        memberNames: data.memberNames,
+        memberEmails: data.memberEmails.map(({ name, email }) => ({
+          name,
+          email: email ?? "",
+        })),
         budgetItems: data.budgetItems,
       });
     },
@@ -367,31 +373,50 @@ export default function CreateTrip() {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   {Array.from({ length: memberCount }).map((_, index) => (
-                    <FormField
-                      key={index}
-                      control={form.control}
-                      name={`memberNames.${index}`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Member {index + 1}</FormLabel>
-                          <div className="flex items-center gap-2">
-                            <Avatar className={`h-10 w-10 ${MEMBER_COLORS[index % MEMBER_COLORS.length]}`}>
-                              <AvatarFallback className="text-white">
-                                {field.value ? field.value.charAt(0).toUpperCase() : index + 1}
-                              </AvatarFallback>
-                            </Avatar>
+                    <div key={index} className="space-y-2">
+                      <FormField
+                        control={form.control}
+                        name={`memberEmails.${index}.name`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Member {index + 1} Name</FormLabel>
+                            <div className="flex items-center gap-2">
+                              <Avatar className={`h-10 w-10 ${MEMBER_COLORS[index % MEMBER_COLORS.length]}`}>
+                                <AvatarFallback className="text-white">
+                                  {field.value ? field.value.charAt(0).toUpperCase() : index + 1}
+                                </AvatarFallback>
+                              </Avatar>
+                              <FormControl>
+                                <Input
+                                  placeholder={`Name ${index + 1}`}
+                                  {...field}
+                                  data-testid={`input-member-${index}-name`}
+                                />
+                              </FormControl>
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`memberEmails.${index}.email`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Member {index + 1} Email (Optional - for Google Account invites)</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder={`Name ${index + 1}`}
+                                type="email"
+                                placeholder={`email${index + 1}@example.com (optional)`}
                                 {...field}
-                                data-testid={`input-member-${index}`}
+                                data-testid={`input-member-${index}-email`}
                               />
                             </FormControl>
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   ))}
                 </div>
               </CardContent>
@@ -502,7 +527,7 @@ export default function CreateTrip() {
                               </div>
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                              {memberNames.map((name, idx) => (
+                              {memberEmails.map((member, idx) => (
                                 <div key={idx} className="flex items-center space-x-2">
                                   <Checkbox
                                     id={`member-${item.tempId}-${idx}`}
@@ -516,10 +541,10 @@ export default function CreateTrip() {
                                   >
                                     <Avatar className={`h-6 w-6 ${MEMBER_COLORS[idx % MEMBER_COLORS.length]}`}>
                                       <AvatarFallback className="text-xs text-white">
-                                        {name ? name.charAt(0).toUpperCase() : idx + 1}
+                                        {member.name ? member.name.charAt(0).toUpperCase() : idx + 1}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span className="truncate">{name || `Member ${idx + 1}`}</span>
+                                    <span className="truncate">{member.name || `Member ${idx + 1}`}</span>
                                   </label>
                                 </div>
                               ))}

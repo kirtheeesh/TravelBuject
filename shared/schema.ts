@@ -4,7 +4,12 @@ import { z } from "zod";
 export const memberSchema = z.object({
   id: z.string(),
   name: z.string().min(1, "Member name is required"),
+  email: z.string().email("Valid email is required").optional(),
   color: z.string(), // For avatar background color
+  status: z.enum(["owner", "joined", "invited", "pending"]).default("pending"),
+  invitedAt: z.number().optional(), // timestamp when invited
+  joinedAt: z.number().optional(), // timestamp when joined
+  invitationCode: z.string().optional(), // unique code for joining the trip
 });
 
 export type Member = z.infer<typeof memberSchema>;
@@ -29,6 +34,28 @@ export const budgetItemSchema = z.object({
 
 export type BudgetItem = z.infer<typeof budgetItemSchema>;
 
+// Spending item (actual expenses tracked against budget)
+export const spendingItemSchema = z.object({
+  id: z.string(),
+  tripId: z.string(),
+  budgetItemId: z.string(), // Links to the original budget item
+  name: z.string().min(1, "Item name is required"),
+  amount: z.number().positive("Amount must be positive"),
+  category: z.enum([
+    "Food",
+    "Accommodation",
+    "Transport",
+    "Entertainment",
+    "Shopping",
+    "Miscellaneous",
+  ]),
+  memberIds: z.array(z.string()).min(1, "Select at least one member"),
+  createdAt: z.number(), // timestamp
+  isCompleted: z.boolean().default(false), // Whether this spending is marked as completed
+});
+
+export type SpendingItem = z.infer<typeof spendingItemSchema>;
+
 // Trip
 export const tripSchema = z.object({
   id: z.string(),
@@ -42,7 +69,7 @@ export const tripSchema = z.object({
 export type Trip = z.infer<typeof tripSchema>;
 
 // Insert schemas (without id and auto-generated fields)
-export const insertMemberSchema = memberSchema.omit({ id: true });
+export const insertMemberSchema = memberSchema.omit({ id: true, status: true, invitedAt: true, joinedAt: true });
 export type InsertMember = z.infer<typeof insertMemberSchema>;
 
 export const insertBudgetItemSchema = budgetItemSchema
@@ -54,11 +81,26 @@ export const insertBudgetItemSchema = budgetItemSchema
   });
 export type InsertBudgetItem = z.infer<typeof insertBudgetItemSchema>;
 
+export const insertSpendingItemSchema = spendingItemSchema
+  .omit({ id: true, createdAt: true })
+  .extend({
+    // For creation form validation
+    name: z.string().min(1, "Item name is required"),
+    amount: z.coerce.number().positive("Amount must be positive"),
+  });
+export type InsertSpendingItem = z.infer<typeof insertSpendingItemSchema>;
+
 export const insertTripSchema = z.object({
   name: z.string().min(3, "Trip name must be at least 3 characters"),
   memberCount: z.coerce.number().min(1).max(20),
-  memberNames: z.array(z.string()).transform(names => 
-    names.map((name, i) => name.trim() || `Member ${i + 1}`)
+  memberEmails: z.array(z.object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Valid email is required").optional().or(z.literal("")),
+  })).transform(members =>
+    members.map((member, i) => ({
+      name: member.name.trim() || `Member ${i + 1}`,
+      email: member.email || undefined,
+    }))
   ),
 });
 export type InsertTrip = z.infer<typeof insertTripSchema>;
