@@ -35,13 +35,18 @@ const corsOptions: CorsOptions = {
     }
     
     // In production, use explicit allowed origins from environment variable
+    const defaultOrigins = ['https://bktravelbud.onrender.com'];
+    if (process.env.RENDER_EXTERNAL_URL) {
+      defaultOrigins.push(process.env.RENDER_EXTERNAL_URL);
+    }
     const allowedOrigins = process.env.ALLOWED_ORIGINS 
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-      : ['https://bktravelbudject.onrender.com'];
+      : defaultOrigins;
     
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      log(`Blocked CORS origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
