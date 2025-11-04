@@ -28,8 +28,11 @@ declare global {
 // CORS configuration to allow credentials
 const corsOptions: CorsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Allow requests from localhost (for development) and the same origin
-    if (!origin || origin === process.env.VITE_API_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    // In development, allow all origins (Replit proxy, localhost, etc.)
+    // In production, restrict to specific origins
+    if (process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else if (!origin || origin === process.env.VITE_API_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
