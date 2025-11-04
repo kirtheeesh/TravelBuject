@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { subscribeToTrip, subscribeToBudgetItems, deleteBudgetItem } from "@/lib/mongodb-operations";
+import { subscribeToTrip, subscribeToBudgetItems, deleteBudgetItem, deleteTrip } from "@/lib/mongodb-operations";
 import { useEffect, useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
@@ -166,10 +166,9 @@ export default function Dashboard() {
           localStorage.setItem("exploreTripData", JSON.stringify(updatedTrips));
         }
       } else {
-        // TODO: Add Firebase deletion logic when Firebase is enabled
-        console.log("Firebase deletion not implemented yet");
+        await deleteTrip(tripId!);
       }
-      
+
       toast({
         title: "Trip deleted",
         description: "The trip has been successfully deleted.",

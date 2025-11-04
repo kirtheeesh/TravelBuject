@@ -349,6 +349,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/trips/:id", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const tripId = req.params.id;
+      const userId = req.session!.userId!;
+      const tripsCollection = getTripsCollection();
+      const budgetItemsCollection = getBudgetItemsCollection();
+
+      // Verify that the trip belongs to the current user
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      console.log("[DELETE /api/trips/:id] Deleting trip:", { tripId, userId, tripName: trip.name });
+
+      // Delete all budget items for this trip
+      const budgetItemsResult = await budgetItemsCollection.deleteMany({ tripId });
+      console.log(`[DELETE /api/trips/:id] Deleted ${budgetItemsResult.deletedCount} budget items`);
+
+      // Delete the trip
+      const tripResult = await tripsCollection.deleteOne({ _id: tripId, userId });
+      if (tripResult.deletedCount === 0) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      console.log("[DELETE /api/trips/:id] Trip deleted successfully");
+      res.json({ message: "Trip deleted successfully" });
+    } catch (error) {
+      console.error("Delete trip error:", error);
+      res.status(500).json({ message: "Failed to delete trip" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

@@ -211,3 +211,13 @@ export async function deleteBudgetItem(tripId: string, itemId: string): Promise<
 
   await handleResponse<{ message: string }>(response);
 }
+
+export async function deleteTrip(tripId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+  });
+
+  await handleResponse<{ message: string }>(response);
+}
