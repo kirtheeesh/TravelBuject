@@ -4,9 +4,4 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
-.local
-.replit
 .env
-desgin_guidelines.md
-replit.md
-typecheck_output.txt
