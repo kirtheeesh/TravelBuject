@@ -1,12 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleLogin } from "@react-oauth/google";
-
-interface User {
-  id: string;
-  email: string;
-  name?: string;
-}
+import type { User } from "@shared/schema";
 
 interface AuthContextType {
   user: User | null;
@@ -33,7 +28,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const response = await fetch("/api/auth/session");
+        const response = await fetch("/api/auth/session", {
+          credentials: "include",
+        });
         if (response.ok) {
           const userData = await response.json();
           setUser(userData.user);
@@ -57,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await fetch("/api/auth/google-signin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ token: codeResponse.access_token }),
         });
 
@@ -102,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await fetch("/api/auth/signout", {
         method: "POST",
+        credentials: "include",
       });
 
       setUser(null);

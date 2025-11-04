@@ -34,6 +34,7 @@ export async function createTrip(
   const response = await fetch(`${API_BASE}/trips`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       userId,
       name: tripData.name,
@@ -47,7 +48,9 @@ export async function createTrip(
 }
 
 export async function getTrips(userId: string): Promise<Trip[]> {
-  const response = await fetch(`${API_BASE}/trips?userId=${encodeURIComponent(userId)}`);
+  const response = await fetch(`${API_BASE}/trips`, {
+    credentials: "include",
+  });
   const result = await handleResponse<{ trips: Trip[] }>(response);
   return result.trips;
 }
@@ -85,7 +88,9 @@ export function subscribeToTrips(
 
 export async function getTrip(tripId: string): Promise<Trip | null> {
   try {
-    const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}`);
+    const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}`, {
+      credentials: "include",
+    });
     if (response.status === 404) return null;
     const result = await handleResponse<Trip>(response);
     return result;
@@ -126,7 +131,9 @@ export function subscribeToTrip(
 }
 
 export async function getBudgetItems(tripId: string): Promise<BudgetItem[]> {
-  const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}/budget-items`);
+  const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}/budget-items`, {
+    credentials: "include",
+  });
   const result = await handleResponse<{ items: BudgetItem[] }>(response);
   return result.items;
 }
@@ -184,9 +191,23 @@ export async function addBudgetItem(
   const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}/budget-items`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(itemData),
   });
 
   const result = await handleResponse<{ id: string }>(response);
   return result.id;
+}
+
+export async function deleteBudgetItem(tripId: string, itemId: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/trips/${encodeURIComponent(tripId)}/budget-items/${encodeURIComponent(itemId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    }
+  );
+
+  await handleResponse<{ message: string }>(response);
 }

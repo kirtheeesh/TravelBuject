@@ -63,10 +63,10 @@ export const insertTripSchema = z.object({
 });
 export type InsertTrip = z.infer<typeof insertTripSchema>;
 
-// User from Firebase Auth
+// User from Google OAuth
 export type User = {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
+  id: string;
+  email: string;
+  name?: string;
+  picture?: string;
 };

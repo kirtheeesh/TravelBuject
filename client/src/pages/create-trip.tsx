@@ -19,7 +19,6 @@ import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { createTrip } from "@/lib/mongodb-operations";
-import { LoginPromptDialog } from "@/components/LoginPromptDialog";
 
 const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 const CATEGORIES = ["Food", "Accommodation", "Transport", "Entertainment", "Shopping", "Miscellaneous"] as const;
@@ -123,7 +122,6 @@ export default function CreateTrip() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [budgetItems, setBudgetItems] = useState<BudgetItemInput[]>([]);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
 
   const form = useForm<z.infer<typeof insertTripSchema>>({
@@ -203,65 +201,27 @@ export default function CreateTrip() {
 
   const createTripMutation = useMutation({
     mutationFn: async (data: z.infer<typeof insertTripSchema> & { budgetItems: BudgetItemInput[] }) => {
-      console.log("Mutation function called with explore mode:", isExploring);
-      
-      if (isExploring) {
-        console.log("Saving to localStorage...");
-        const exploreTripsData = localStorage.getItem("exploreTripData");
-        const existingTrips: Trip[] = exploreTripsData ? JSON.parse(exploreTripsData) : [];
-        
-        const tripId = `explore-${Date.now()}`;
-        const newTrip: Trip = {
-          id: tripId,
-          name: data.name,
-          createdAt: new Date().toISOString(),
-          userId: "explore-user",
-          members: data.memberNames.map((name, idx) => ({
-            id: idx.toString(),
-            name: name || `Member ${idx + 1}`,
-            color: ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"][idx % 5],
-          })),
-          budgetItems: data.budgetItems.map(item => ({
-            id: `${tripId}-${item.tempId}`,
-            tripId: tripId,
-            name: item.name,
-            amount: item.amount,
-            category: item.category,
-            memberIds: item.memberIds,
-            createdAt: new Date().toISOString(),
-          })),
-        };
-        
-        existingTrips.push(newTrip);
-        localStorage.setItem("exploreTripData", JSON.stringify(existingTrips));
-        console.log("Saved trip to localStorage:", newTrip);
-        return newTrip;
+      if (!user?.id) {
+        throw new Error("Please sign in to save your trip");
       }
-
-      if (!user?.uid) {
-        throw new Error("Not authenticated. Use explore mode or sign in.");
-      }
-      console.log("Creating trip in Firebase...");
-      return await createTrip(user.uid, {
+      return await createTrip(user.id, {
         name: data.name,
         memberNames: data.memberNames,
         budgetItems: data.budgetItems,
       });
     },
-    onSuccess: (savedTrip) => {
-      console.log("Trip saved successfully:", savedTrip);
+    onSuccess: (tripId) => {
+      console.log("Trip saved successfully:", tripId);
       queryClient.invalidateQueries({ queryKey: ["trips"] });
-      
-      if (isExploring) {
-        setShowLoginPrompt(true);
-        setTimeout(() => setLocation("/home"), 5000);
-      } else {
-        toast({
-          title: "Trip created!",
-          description: "Your travel budget has been saved successfully.",
-        });
+      toast({
+        title: "Trip created!",
+        description: "Your travel budget has been saved successfully.",
+      });
+      // Add small delay to ensure trip is saved in DB, then redirect to home
+      // so user can see the trip in the list before clicking to view dashboard
+      setTimeout(() => {
         setLocation("/home");
-      }
+      }, 500);
     },
     onError: (error: any) => {
       console.error("Trip creation error:", error);
@@ -274,8 +234,16 @@ export default function CreateTrip() {
   });
 
   const onSubmit = async (data: z.infer<typeof insertTripSchema>) => {
-    console.log("Form submitted:", { data, budgetItems, isExploring, user: user?.uid });
-    
+    if (!user?.id) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in with Google to save your trip.",
+        variant: "destructive",
+      });
+      signInWithGoogle();
+      return;
+    }
+
     if (!data.name || data.name.length < 3) {
       toast({
         title: "Trip name required",
@@ -315,22 +283,14 @@ export default function CreateTrip() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <LoginPromptDialog open={showLoginPrompt} onOpenChange={setShowLoginPrompt} />
 
       <main className="container mx-auto max-w-4xl px-4 py-8 md:px-8">
         <div className="mb-8">
           <div className="mb-4 flex items-center gap-2">
             <h1 className="text-3xl font-bold">Create New Trip</h1>
-            {isExploring && (
-              <span className="inline-block rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-                Explore Mode (Saving to Device)
-              </span>
-            )}
           </div>
           <p className="text-muted-foreground">
-            {isExploring 
-              ? "Set up your travel budget. Data saves to your device. Sign in later to save permanently."
-              : "Set up your travel budget and add members"}
+            Set up your travel budget and add members
           </p>
         </div>
 
@@ -533,7 +493,6 @@ export default function CreateTrip() {
                                 <Checkbox
                                   id={`select-all-${item.tempId}`}
                                   checked={item.memberIds.length === memberCount && memberCount > 0}
-                                  indeterminate={item.memberIds.length > 0 && item.memberIds.length < memberCount}
                                   onCheckedChange={() => toggleAllMembers(item.tempId)}
                                   data-testid={`checkbox-select-all-${itemIndex}`}
                                 />
@@ -611,40 +570,25 @@ export default function CreateTrip() {
                 Cancel
               </Button>
               <Button
-                type="button"
-                variant="secondary"
-                className="gap-2"
-                onClick={() => {
-                  console.log("Direct test - current form values:", form.getValues());
-                  console.log("Form is valid:", form.formState.isValid);
-                  console.log("Form errors:", form.formState.errors);
-                  console.log("Budget items:", budgetItems);
-                }}
-              >
-                Check Form Status
-              </Button>
-              <Button
                 type="submit"
                 className="gap-2"
                 disabled={createTripMutation.isPending}
                 data-testid="button-save-trip"
-                onClick={(e) => {
-                  console.log("Save button clicked", {
-                    isValid: form.formState.isValid,
-                    errors: form.formState.errors,
-                    values: form.getValues(),
-                  });
-                }}
               >
                 {createTripMutation.isPending ? (
                   <>
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                     Saving...
                   </>
-                ) : (
+                ) : user?.id ? (
                   <>
                     <IndianRupee className="h-4 w-4" />
                     Save Trip
+                  </>
+                ) : (
+                  <>
+                    <IndianRupee className="h-4 w-4" />
+                    Sign In to Save
                   </>
                 )}
               </Button>

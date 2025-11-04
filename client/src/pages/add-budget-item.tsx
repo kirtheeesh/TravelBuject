@@ -17,7 +17,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { subscribeToTrip, addBudgetItem } from "@/lib/mongodb-operations";
 import { cn } from "@/lib/utils";
-import type { Trip } from "@shared/schema";
+import type { Trip, BudgetItem } from "@shared/schema";
 
 const CATEGORIES = ["Food", "Accommodation", "Transport", "Entertainment", "Shopping", "Miscellaneous"] as const;
 
@@ -204,10 +204,10 @@ export default function AddBudgetItem() {
           tripId,
           name: item.name,
           amount: item.amount,
-          category: item.category,
+          category: item.category as "Food" | "Accommodation" | "Transport" | "Entertainment" | "Shopping" | "Miscellaneous",
           memberIds: item.memberIds,
           createdAt: Date.now(),
-        }));
+        })) as BudgetItem[];
         
         trips[tripIndex].budgetItems = [...(trips[tripIndex].budgetItems || []), ...newBudgetItems];
         localStorage.setItem("exploreTripData", JSON.stringify(trips));

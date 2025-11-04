@@ -3,13 +3,13 @@ import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, Users, Calendar } from "lucide-react";
+import { Plus, Users, Calendar, RefreshCw } from "lucide-react";
 import { IndianRupee } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Trip } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
-import { subscribeToTrips } from "@/lib/mongodb-operations";
+import { subscribeToTrips, getTrips } from "@/lib/mongodb-operations";
 import { useEffect, useState } from "react";
 
 // Member color palette for avatars
@@ -26,6 +26,21 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Force refresh trips
+  const refreshTrips = async () => {
+    if (!user?.id) return;
+    setIsRefreshing(true);
+    try {
+      const updatedTrips = await getTrips(user.id);
+      setTrips(updatedTrips);
+    } catch (error) {
+      console.error("Error refreshing trips:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Real-time listener for trips
   useEffect(() => {
@@ -43,26 +58,51 @@ export default function Home() {
       return;
     }
 
-    if (!user?.uid) {
+    if (!user?.id) {
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
-    const unsubscribe = subscribeToTrips(
-      user.uid,
-      (updatedTrips) => {
-        setTrips(updatedTrips);
+    // Fetch trips immediately and then set up polling
+    const fetchAndSubscribe = async () => {
+      try {
+        setIsLoading(true);
+        // Initial immediate fetch
+        const initialTrips = await getTrips(user.id);
+        setTrips(initialTrips);
         setIsLoading(false);
-      },
-      (error) => {
-        console.error("Error loading trips:", error);
-        setIsLoading(false);
+      } catch (error) {
+        console.error("Error fetching initial trips:", error);
       }
-    );
 
-    return () => unsubscribe();
-  }, [user?.uid, isExploring]);
+      // Then set up polling for real-time updates
+      const unsubscribe = subscribeToTrips(
+        user.id,
+        (updatedTrips) => {
+          setTrips(updatedTrips);
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error("Error loading trips:", error);
+          setIsLoading(false);
+        }
+      );
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    
+    fetchAndSubscribe().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user?.id, isExploring]);
 
   const handleCreateTrip = () => {
     setLocation("/create-trip");
@@ -99,6 +139,17 @@ export default function Home() {
           >
             <Plus className="h-5 w-5" />
             Create New Trip
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            className="h-12 gap-2"
+            onClick={refreshTrips}
+            disabled={isRefreshing}
+            data-testid="button-refresh-trips"
+          >
+            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
 

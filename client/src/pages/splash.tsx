@@ -4,7 +4,6 @@ import { Plane, Users, TrendingUp } from "lucide-react";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { IndianRupee } from "lucide-react";
-import heroImage from "@assets/generated_images/Tropical_beach_sunset_hero_d4442a68.png";
 
 export default function Splash() {
   const { user, loading, signInWithGoogle, isExploring, enterExploreMode } = useAuth();
@@ -32,17 +31,8 @@ export default function Splash() {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section with Background Image */}
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
-        {/* Background Image with Dark Overlay */}
-        <div className="absolute inset-0 z-0">
-          <img
-            src={heroImage}
-            alt="Travel destination"
-            className="h-full w-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
-        </div>
+      {/* Hero Section with Gradient Background */}
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700">
 
         {/* Content */}
         <div className="relative z-10 mx-auto max-w-4xl px-4 text-center md:px-8">

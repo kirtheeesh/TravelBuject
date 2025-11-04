@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import cors, { type CorsOptions } from "cors";
 import session from "express-session";
 import MemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
@@ -24,36 +25,55 @@ declare global {
   }
 }
 
+// CORS configuration to allow credentials
+const corsOptions: CorsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests from localhost (for development) and the same origin
+    if (!origin || origin === process.env.VITE_API_URL || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOptions));
+// IMPORTANT: Trust proxy for session cookies when behind a proxy
+app.set('trust proxy', 1);
+
 app.use(session({
   store: new SessionStore({
     checkPeriod: 86400000,
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000,
   },
 }));
 
 app.use(express.json({
-  verify: (req, _res, buf) => {
+  verify: (req: any, _res: any, buf: Buffer) => {
     req.rawBody = buf;
   }
 }));
 app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  res.json = function (bodyJson: any) {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
+    return originalResJson.call(res, bodyJson);
   };
 
   res.on("finish", () => {

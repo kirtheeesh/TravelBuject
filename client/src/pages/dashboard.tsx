@@ -11,10 +11,12 @@ import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { subscribeToTrip, subscribeToBudgetItems } from "@/lib/mongodb-operations";
+import { subscribeToTrip, subscribeToBudgetItems, deleteBudgetItem } from "@/lib/mongodb-operations";
 import { useEffect, useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
+import { useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 
 const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
@@ -40,6 +42,8 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<BudgetItem | null>(null);
+  const [showDeleteItemDialog, setShowDeleteItemDialog] = useState(false);
   const isInitialMount = useRef(true);
 
   // Real-time listener for trip
@@ -112,6 +116,43 @@ export default function Dashboard() {
 
     return () => unsubscribe();
   }, [tripId, isExploring, toast]);
+
+  const deleteItemMutation = useMutation({
+    mutationFn: async (item: BudgetItem) => {
+      if (!tripId) throw new Error("Trip ID is required");
+      if (isExploring) {
+        const exploreTrips = localStorage.getItem("exploreTripData");
+        if (exploreTrips) {
+          const trips = JSON.parse(exploreTrips) as Trip[];
+          const tripIndex = trips.findIndex(t => t.id === tripId);
+          if (tripIndex !== -1) {
+            trips[tripIndex].budgetItems = trips[tripIndex].budgetItems?.filter(
+              (i) => i.id !== item.id
+            ) || [];
+            localStorage.setItem("exploreTripData", JSON.stringify(trips));
+          }
+        }
+      } else {
+        await deleteBudgetItem(tripId, item.id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budgetItems", tripId] });
+      toast({
+        title: "Budget item deleted",
+        description: "The budget item has been successfully deleted.",
+      });
+      setShowDeleteItemDialog(false);
+      setItemToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to delete item",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleDeleteTrip = async () => {
     setIsDeleting(true);
@@ -390,6 +431,7 @@ export default function Dashboard() {
                       <TableHead>Amount</TableHead>
                       <TableHead>Split Between</TableHead>
                       <TableHead className="text-right">Per Person</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -424,6 +466,20 @@ export default function Dashboard() {
                           <TableCell className="text-right">
                             ₹{(item.amount / item.memberIds.length).toFixed(2)}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setItemToDelete(item);
+                                setShowDeleteItemDialog(true);
+                              }}
+                              disabled={deleteItemMutation.isPending}
+                              data-testid={`button-delete-item-${item.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                   </TableBody>
@@ -432,6 +488,39 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Budget Item Dialog */}
+        <AlertDialog open={showDeleteItemDialog} onOpenChange={setShowDeleteItemDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Budget Item</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{itemToDelete?.name}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex gap-2 justify-end">
+              <AlertDialogCancel disabled={deleteItemMutation.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  if (itemToDelete) {
+                    deleteItemMutation.mutate(itemToDelete);
+                  }
+                }}
+                disabled={deleteItemMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteItemMutation.isPending ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Delete Trip Dialog */}
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

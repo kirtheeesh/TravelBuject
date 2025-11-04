@@ -42,11 +42,16 @@ export async function verifyGoogleToken(token: string): Promise<AuthUser | null>
         createdAt: Date.now(),
       };
       await usersCollection.insertOne(newUser);
-      user = newUser;
+      user = newUser as DBUser & { _id: string };
+    }
+
+    const userId = user._id || '';
+    if (!userId || !user.email) {
+      return null;
     }
 
     return {
-      id: user._id || '',
+      id: userId,
       email: user.email,
       name: user.name,
       picture: payload.picture,

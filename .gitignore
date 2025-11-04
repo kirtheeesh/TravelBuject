@@ -7,7 +7,6 @@ vite.config.ts.*
 .local
 .replit
 .env
-attached_assets
 desgin_guidelines.md
 replit.md
 typecheck_output.txt
