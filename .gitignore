@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+.local
+.replit
+.env
+attached_assets
+desgin_guidelines.md
+replit.md
+typecheck_output.txt
