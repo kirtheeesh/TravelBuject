@@ -30,15 +30,16 @@ export const budgetItemSchema = z.object({
   ]),
   memberIds: z.array(z.string()).min(1, "Select at least one member"),
   createdAt: z.number(), // timestamp
+  isUnplanned: z.boolean().optional().default(false), // Whether this budget item was created from unplanned spending
 });
 
 export type BudgetItem = z.infer<typeof budgetItemSchema>;
 
-// Spending item (actual expenses tracked against budget)
+// Spending item (actual expenses tracked against budget or unplanned spending)
 export const spendingItemSchema = z.object({
   id: z.string(),
   tripId: z.string(),
-  budgetItemId: z.string(), // Links to the original budget item
+  budgetItemId: z.string().optional(), // Links to the original budget item (optional for unplanned spending)
   name: z.string().min(1, "Item name is required"),
   amount: z.number().positive("Amount must be positive"),
   category: z.enum([
@@ -79,6 +80,7 @@ export const insertBudgetItemSchema = budgetItemSchema
     // For creation form validation
     name: z.string().min(1, "Item name is required"),
     amount: z.coerce.number().positive("Amount must be positive"),
+    isUnplanned: z.boolean().optional().default(false), // Default to false for planned items
   });
 export type InsertBudgetItem = z.infer<typeof insertBudgetItemSchema>;
 
@@ -88,6 +90,7 @@ export const insertSpendingItemSchema = spendingItemSchema
     // For creation form validation
     name: z.string().min(1, "Item name is required"),
     amount: z.coerce.number().positive("Amount must be positive"),
+    budgetItemId: z.string().optional(), // Optional for unplanned spending
   });
 export type InsertSpendingItem = z.infer<typeof insertSpendingItemSchema>;
 

@@ -5,12 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Calendar, IndianRupee, Download, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Calendar, IndianRupee, Download, Trash2, Plus } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import type { Trip, SpendingItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { subscribeToTrip, subscribeToSpendingItems, deleteSpendingItem } from "@/lib/mongodb-operations";
+import { subscribeToTrip, subscribeToSpendingItems, deleteSpendingItem, addSpendingItem } from "@/lib/mongodb-operations";
 import { useEffect, useState, useRef } from "react";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +43,12 @@ export default function Spending() {
   const [isLoading, setIsLoading] = useState(true);
   const [itemToDelete, setItemToDelete] = useState<SpendingItem | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAddSpending, setShowAddSpending] = useState(false);
+  const [newSpendingName, setNewSpendingName] = useState("");
+  const [newSpendingAmount, setNewSpendingAmount] = useState("");
+  const [newSpendingCategory, setNewSpendingCategory] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const isInitialMount = useRef(true);
 
   // Real-time listener for trip
@@ -162,6 +172,56 @@ export default function Spending() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleAddUnplannedSpending = async () => {
+    if (!tripId || !newSpendingName.trim() || !newSpendingAmount || !newSpendingCategory || selectedMembers.length === 0) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all fields and select at least one member.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await addSpendingItem(tripId, {
+        name: newSpendingName.trim(),
+        amount: parseFloat(newSpendingAmount),
+        category: newSpendingCategory,
+        memberIds: selectedMembers,
+        // budgetItemId is omitted for unplanned spending
+      });
+
+      toast({
+        title: "Spending added",
+        description: `${newSpendingName} has been added to your spending history.`,
+      });
+
+      // Reset form
+      setNewSpendingName("");
+      setNewSpendingAmount("");
+      setNewSpendingCategory("");
+      setSelectedMembers([]);
+      setShowAddSpending(false);
+    } catch (error: any) {
+      toast({
+        title: "Failed to add spending",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMemberToggle = (memberId: string) => {
+    setSelectedMembers(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
   };
 
   if (isLoading) {
@@ -396,6 +456,138 @@ export default function Spending() {
           </div>
         )}
 
+        {/* Add Unplanned Spending */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Add Unplanned Spending
+            </CardTitle>
+            <CardDescription>
+              Track expenses that weren't part of your original budget
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!showAddSpending ? (
+              <Button
+                onClick={() => setShowAddSpending(true)}
+                className="w-full"
+                variant="outline"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Spending Not in Budget
+              </Button>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="spending-name">Expense Name</Label>
+                    <Input
+                      id="spending-name"
+                      placeholder="e.g., Tea, Snacks, Toll"
+                      value={newSpendingName}
+                      onChange={(e) => setNewSpendingName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="spending-amount">Amount (₹)</Label>
+                    <Input
+                      id="spending-amount"
+                      type="number"
+                      placeholder="300"
+                      value={newSpendingAmount}
+                      onChange={(e) => setNewSpendingAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="spending-category">Category</Label>
+                  <Select value={newSpendingCategory} onValueChange={setNewSpendingCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Food">Food</SelectItem>
+                      <SelectItem value="Accommodation">Accommodation</SelectItem>
+                      <SelectItem value="Transport">Transport</SelectItem>
+                      <SelectItem value="Entertainment">Entertainment</SelectItem>
+                      <SelectItem value="Shopping">Shopping</SelectItem>
+                      <SelectItem value="Miscellaneous">Miscellaneous</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Who's Paying (Split Between)</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="select-all-members"
+                        checked={selectedMembers.length === trip.members.length}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedMembers(trip.members.map(m => m.id));
+                          } else {
+                            setSelectedMembers([]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="select-all-members" className="cursor-pointer font-medium">
+                        Select All Members
+                      </Label>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2 pl-6">
+                      {trip.members.map((member) => (
+                        <div key={member.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`member-${member.id}`}
+                            checked={selectedMembers.includes(member.id)}
+                            onCheckedChange={() => handleMemberToggle(member.id)}
+                          />
+                          <Label
+                            htmlFor={`member-${member.id}`}
+                            className="flex items-center gap-2 cursor-pointer"
+                          >
+                            <Avatar className={`h-6 w-6 ${member.color}`}>
+                              <AvatarFallback className="text-xs text-white">
+                                {member.name.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    onClick={handleAddUnplannedSpending}
+                    disabled={isSubmitting}
+                    className="flex-1"
+                  >
+                    {isSubmitting ? "Adding..." : "Add Spending"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddSpending(false);
+                      setNewSpendingName("");
+                      setNewSpendingAmount("");
+                      setNewSpendingCategory("");
+                      setSelectedMembers([]);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Spending History */}
         <Card>
           <CardHeader>
@@ -403,7 +595,7 @@ export default function Spending() {
             <CardDescription>
               Complete record of what you've actually paid for during your trip.
               <span className="block mt-1 text-xs">
-                💡 <strong>Note:</strong> These are expenses you've marked as completed in your budget list.
+                💡 <strong>Note:</strong> Includes both planned expenses marked as spent and unplanned spending added directly.
               </span>
             </CardDescription>
           </CardHeader>

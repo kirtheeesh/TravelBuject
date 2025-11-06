@@ -96,7 +96,7 @@ export default function Splash() {
           <div className="grid gap-8 md:grid-cols-3">
             <div className="text-center">
               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600">
                   <Users className="h-8 w-8 text-white" />
                 </div>
               </div>
@@ -108,7 +108,7 @@ export default function Splash() {
 
             <div className="text-center">
               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600">
                   <IndianRupee className="h-8 w-8 text-white" />
                 </div>
               </div>
@@ -120,7 +120,7 @@ export default function Splash() {
 
             <div className="text-center">
               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600">
                   <TrendingUp className="h-8 w-8 text-white" />
                 </div>
               </div>

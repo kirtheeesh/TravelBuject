@@ -277,7 +277,7 @@ export function subscribeToSpendingItems(
 export async function addSpendingItem(
   tripId: string,
   itemData: {
-    budgetItemId: string;
+    budgetItemId?: string; // Optional for unplanned spending
     name: string;
     amount: number;
     category: string;

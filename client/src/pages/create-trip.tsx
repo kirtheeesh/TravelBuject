@@ -175,6 +175,7 @@ export default function CreateTrip() {
       amount: 0,
       category: "Miscellaneous",
       memberIds: [],
+      isUnplanned: false,
     };
     setBudgetItems([...budgetItems, newItem]);
   };

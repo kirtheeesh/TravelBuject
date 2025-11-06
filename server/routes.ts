@@ -4,7 +4,7 @@ import { connectDB, getTripsCollection, getBudgetItemsCollection, getSpendingIte
 import { verifyGoogleToken } from "./auth";
 import { randomUUID } from "crypto";
 
-const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
+const MEMBER_COLORS = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-teal-500"];
 
 function generateJoinCode() {
   return randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
@@ -466,20 +466,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
-      const itemId = randomUUID();
       const spendingItemsCollection = getSpendingItemsCollection();
+      const budgetItemsCollection = getBudgetItemsCollection();
+
+      let finalBudgetItemId = budgetItemId;
+
+      // If no budgetItemId provided, create a budget item first (unplanned spending)
+      if (!budgetItemId) {
+        const budgetItemId = randomUUID();
+        finalBudgetItemId = budgetItemId;
+
+        await budgetItemsCollection.insertOne({
+          _id: budgetItemId,
+          id: budgetItemId,
+          tripId,
+          name,
+          amount,
+          category,
+          memberIds,
+          createdAt: Date.now(),
+          isUnplanned: true,
+        } as any);
+      }
+
+      const itemId = randomUUID();
 
       await spendingItemsCollection.insertOne({
         _id: itemId,
         id: itemId,
         tripId,
-        budgetItemId,
+        budgetItemId: finalBudgetItemId,
         name,
         amount,
         category,
         memberIds,
         createdAt: Date.now(),
-        isCompleted: false,
+        isCompleted: true, // All spending items are completed when added
       });
 
       res.json({ id: itemId });

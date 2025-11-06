@@ -22,7 +22,8 @@ import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 
-const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
+const MEMBER_COLORS = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-teal-500"];
+const LIGHT_MEMBER_COLORS = ["bg-yellow-500"]; // Colors that need dark text for contrast
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -68,6 +69,11 @@ export default function Dashboard() {
   const [memberToRemove, setMemberToRemove] = useState<Trip["members"][number] | null>(null);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
+  const [showRecordSpendingDialog, setShowRecordSpendingDialog] = useState(false);
+  const [selectedBudgetItem, setSelectedBudgetItem] = useState<BudgetItem | null>(null);
+  const [spendingAmount, setSpendingAmount] = useState("");
+  const [spendingName, setSpendingName] = useState("");
+  const [isRecordingSpending, setIsRecordingSpending] = useState(false);
   const isInitialMount = useRef(true);
 
   const currentMember = trip?.members.find((member) => member.email === user?.email);
@@ -85,6 +91,14 @@ export default function Dashboard() {
   }, [trip]);
 
   const activeInvitationCodes = invitationCodes.length > 0 ? invitationCodes : defaultInvitationCodes;
+
+  // Calculate remaining balance for a budget item
+  const getRemainingBalance = (budgetItem: BudgetItem) => {
+    const spentAmount = spendingItems
+      .filter(item => item.budgetItemId === budgetItem.id && item.isCompleted)
+      .reduce((sum, item) => sum + item.amount, 0);
+    return budgetItem.amount - spentAmount;
+  };
 
   // Real-time listener for trip
   useEffect(() => {
@@ -1010,7 +1024,7 @@ export default function Dashboard() {
                 return (
                   <div key={member.id ?? idx} className="flex items-start gap-3 p-3 border rounded-lg bg-card">
                     <Avatar className={`h-8 w-8 ${member.color}`}>
-                      <AvatarFallback className="text-white text-sm">
+                      <AvatarFallback className={`${LIGHT_MEMBER_COLORS.includes(member.color) ? 'text-black' : 'text-white'} text-sm font-semibold`}>
                         {member.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -1118,21 +1132,150 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Budget History */}
+        {/* Remaining Budget Items */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Remaining Budget Items</CardTitle>
+            <CardDescription>
+              Budget items that still have remaining balance to spend.
+              <span className="block mt-1 text-xs">
+                💡 <strong>Tip:</strong> These items haven't been fully spent yet. Use "Record" to add spending.
+              </span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {budgetItems.filter(item => getRemainingBalance(item) > 0).length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="mb-4 text-muted-foreground">All budget items are fully spent!</p>
+                <p className="text-sm text-muted-foreground">Great job staying within your budget.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="hidden sm:table-cell">Date Added</TableHead>
+                      <TableHead>Expense Item</TableHead>
+                      <TableHead className="hidden md:table-cell">Category</TableHead>
+                      <TableHead>Total Budget</TableHead>
+                      <TableHead>Remaining</TableHead>
+                      <TableHead className="hidden lg:table-cell">Who's Paying</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Each Pays</TableHead>
+                      <TableHead className="text-center">Record Spending</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {budgetItems
+                      .filter(item => getRemainingBalance(item) > 0)
+                      .sort((a, b) => getRemainingBalance(a) - getRemainingBalance(b))
+                      .map((item) => (
+                        <TableRow key={item.id} data-testid={`row-remaining-budget-item-${item.id}`}>
+                          <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                              <div className="flex items-center gap-2">
+                                <span>{item.name}</span>
+                                {item.isUnplanned && (
+                                  <span className="inline-flex items-center rounded-full bg-orange-100 text-orange-800 px-2 py-0.5 text-xs font-medium">
+                                    Unplanned
+                                  </span>
+                                )}
+                              </div>
+                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium sm:hidden">
+                                {item.category}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+                              {item.category}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            <div className="flex flex-col">
+                              <span>₹{item.amount.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground sm:hidden">
+                                ₹{(item.amount / item.memberIds.length).toFixed(2)} each
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            <span className={`text-sm ${getRemainingBalance(item) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ₹{getRemainingBalance(item).toFixed(2)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            <div className="flex -space-x-2">
+                              {item.memberIds.map((memberId) => {
+                                const member = trip.members.find((m) => m.id === memberId);
+                                return member ? (
+                                  <Avatar key={memberId} className={`h-7 w-7 border-2 border-background ${member.color}`}>
+                                    <AvatarFallback className="text-xs text-white">
+                                      {member.name.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ) : null;
+                              })}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right hidden sm:table-cell">
+                            ₹{(item.amount / item.memberIds.length).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedBudgetItem(item);
+                                setSpendingAmount("");
+                                setShowRecordSpendingDialog(true);
+                              }}
+                              disabled={isExploring}
+                            >
+                              Record
+                            </Button>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setItemToDelete(item);
+                                setShowDeleteItemDialog(true);
+                              }}
+                              disabled={deleteItemMutation.isPending}
+                              data-testid={`button-delete-remaining-item-${item.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Actual Budgeted Items */}
         <Card>
           <CardHeader>
-            <CardTitle>Budget Items</CardTitle>
+            <CardTitle>Actual Budgeted Items</CardTitle>
             <CardDescription>
-              Plan your trip expenses and mark them as spent when you actually pay for them.
+              Complete list of all budgeted items - both planned at trip start and unplanned expenses added during the trip.
               <span className="block mt-1 text-xs">
-                💡 <strong>Tip:</strong> Check the box when you've completed the purchase to track actual spending.
+                💡 <strong>Tip:</strong> Use the "Remaining Budget Items" section above to record spending.
               </span>
             </CardDescription>
           </CardHeader>
           <CardContent>
             {budgetItems.length === 0 ? (
               <div className="py-12 text-center">
-                <p className="mb-4 text-muted-foreground">No budget items yet</p>
+                <p className="mb-4 text-muted-foreground">No budgeted items yet</p>
                 <Button onClick={handleAddMore} data-testid="button-add-first-budget">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Your First Budget Item
@@ -1149,13 +1292,18 @@ export default function Dashboard() {
                       <TableHead>Total Amount</TableHead>
                       <TableHead className="hidden lg:table-cell">Who's Paying</TableHead>
                       <TableHead className="text-right hidden sm:table-cell">Each Pays</TableHead>
-                      <TableHead className="text-center">Mark as Spent</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {budgetItems
-                      .sort((a, b) => b.createdAt - a.createdAt)
+                      .sort((a, b) => {
+                        // First sort by category, then by created date (newest first within category)
+                        if (a.category !== b.category) {
+                          return a.category.localeCompare(b.category);
+                        }
+                        return b.createdAt - a.createdAt;
+                      })
                       .map((item) => (
                         <TableRow key={item.id} data-testid={`row-budget-item-${item.id}`}>
                           <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
@@ -1163,7 +1311,14 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell className="font-medium">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                              <span>{item.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span>{item.name}</span>
+                                {item.isUnplanned && (
+                                  <span className="inline-flex items-center rounded-full bg-orange-100 text-orange-800 px-2 py-0.5 text-xs font-medium">
+                                    Unplanned
+                                  </span>
+                                )}
+                              </div>
                               <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium sm:hidden">
                                 {item.category}
                               </span>
@@ -1198,13 +1353,6 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell className="text-right hidden sm:table-cell">
                             ₹{(item.amount / item.memberIds.length).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Checkbox
-                              checked={spendingItems.some(spending => spending.budgetItemId === item.id && spending.isCompleted)}
-                              onCheckedChange={(checked) => handleMarkAsSpent(item, checked as boolean)}
-                              disabled={isExploring}
-                            />
                           </TableCell>
                           <TableCell className="text-right">
                             <Button
@@ -1457,6 +1605,128 @@ export default function Dashboard() {
             </div>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Record Spending Dialog */}
+        <Dialog open={showRecordSpendingDialog} onOpenChange={setShowRecordSpendingDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Record Spending</DialogTitle>
+              <DialogDescription>
+                Record how much you actually spent on this budget item.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedBudgetItem && (
+              <div className="space-y-4">
+                <div className="rounded-lg border p-4 bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{selectedBudgetItem.name}</h4>
+                      <p className="text-sm text-muted-foreground">{selectedBudgetItem.category}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">Budget: ₹{selectedBudgetItem.amount.toFixed(2)}</p>
+                      <p className={`text-sm ${getRemainingBalance(selectedBudgetItem) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        Balance: ₹{getRemainingBalance(selectedBudgetItem).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="spending-name">Spending Name (Optional)</Label>
+                  <Input
+                    id="spending-name"
+                    type="text"
+                    placeholder={`e.g., ${selectedBudgetItem.name}`}
+                    value={spendingName}
+                    onChange={(e) => setSpendingName(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use the budget item name
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="spending-amount">Amount Spent (₹)</Label>
+                  <Input
+                    id="spending-amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    value={spendingAmount}
+                    onChange={(e) => setSpendingAmount(e.target.value)}
+                    max={getRemainingBalance(selectedBudgetItem)}
+                  />
+                  {getRemainingBalance(selectedBudgetItem) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Maximum: ₹{getRemainingBalance(selectedBudgetItem).toFixed(2)} remaining
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowRecordSpendingDialog(false);
+                      setSelectedBudgetItem(null);
+                      setSpendingAmount("");
+                      setSpendingName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedBudgetItem || !spendingAmount || !tripId) return;
+
+                      const amount = parseFloat(spendingAmount);
+                      if (amount <= 0 || amount > getRemainingBalance(selectedBudgetItem)) {
+                        toast({
+                          title: "Invalid amount",
+                          description: "Please enter a valid amount within the remaining balance.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      setIsRecordingSpending(true);
+                      try {
+                        await addSpendingItem(tripId, {
+                          budgetItemId: selectedBudgetItem.id,
+                          name: spendingName.trim() || selectedBudgetItem.name,
+                          amount: amount,
+                          category: selectedBudgetItem.category,
+                          memberIds: selectedBudgetItem.memberIds,
+                        });
+
+                        toast({
+                          title: "Spending recorded",
+                          description: `₹${amount.toFixed(2)} recorded for ${selectedBudgetItem.name}`,
+                        });
+
+                        setShowRecordSpendingDialog(false);
+                        setSelectedBudgetItem(null);
+                        setSpendingAmount("");
+                        setSpendingName("");
+                      } catch (error: any) {
+                        toast({
+                          title: "Failed to record spending",
+                          description: error.message,
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsRecordingSpending(false);
+                      }
+                    }}
+                    disabled={isRecordingSpending || !spendingAmount}
+                  >
+                    {isRecordingSpending ? "Recording..." : "Record Spending"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Sign in prompt for explore mode */}
         {isExploring && (
