@@ -30,7 +30,7 @@ export async function createTrip(
     name: member.name,
     email: member.email || undefined,
     color: MEMBER_COLORS[index % MEMBER_COLORS.length],
-    status: member.email ? "invited" : "joined", // If email provided, they're invited, otherwise joined
+    status: index === 0 ? "owner" : member.email ? "invited" : "joined",
   }));
 
   const response = await fetch(`${API_BASE}/trips`, {

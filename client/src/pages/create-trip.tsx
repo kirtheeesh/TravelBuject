@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
@@ -139,6 +139,21 @@ export default function CreateTrip() {
   const memberCount = form.watch("memberCount");
   const memberEmails = form.watch("memberEmails");
 
+  useEffect(() => {
+    if (!user) return;
+    const currentMembers = form.getValues("memberEmails");
+    if (currentMembers.length === 0) {
+      form.setValue("memberEmails", [{ name: "", email: "" }]);
+    }
+    if (form.getValues("memberCount") < 1) {
+      form.setValue("memberCount", 1);
+    }
+    const selfName = user.name?.trim() || user.email || "You";
+    const selfEmail = user.email || "";
+    form.setValue("memberEmails.0.name", selfName, { shouldDirty: false, shouldTouch: false });
+    form.setValue("memberEmails.0.email", selfEmail, { shouldDirty: false, shouldTouch: false });
+  }, [user, form]);
+
   // Update member emails array when count changes
   const handleMemberCountChange = (value: string) => {
     const count = parseInt(value);
@@ -259,15 +274,6 @@ export default function CreateTrip() {
       return;
     }
 
-    if (budgetItems.length === 0) {
-      toast({
-        title: "Add budget items",
-        description: "Please add at least one budget item to continue.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const invalidItems = budgetItems.filter(
       (item) => !item.name || item.amount <= 0 || item.memberIds.length === 0
     );
@@ -379,7 +385,7 @@ export default function CreateTrip() {
                         name={`memberEmails.${index}.name`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Member {index + 1} Name</FormLabel>
+                            <FormLabel>{index === 0 && user ? "Member 1 (You)" : `Member ${index + 1} Name`}</FormLabel>
                             <div className="flex items-center gap-2">
                               <Avatar className={`h-10 w-10 ${MEMBER_COLORS[index % MEMBER_COLORS.length]}`}>
                                 <AvatarFallback className="text-white">
@@ -388,9 +394,10 @@ export default function CreateTrip() {
                               </Avatar>
                               <FormControl>
                                 <Input
-                                  placeholder={`Name ${index + 1}`}
+                                  placeholder={index === 0 && user ? (user.name?.trim() || user.email || "You") : `Name ${index + 1}`}
                                   {...field}
                                   data-testid={`input-member-${index}-name`}
+                                  readOnly={index === 0 && !!user}
                                 />
                               </FormControl>
                             </div>
@@ -403,13 +410,14 @@ export default function CreateTrip() {
                         name={`memberEmails.${index}.email`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Member {index + 1} Email (Optional - for Google Account invites)</FormLabel>
+                            <FormLabel>{index === 0 && user ? "Member 1 Email (Your Google Account)" : `Member ${index + 1} Email (Optional - for Google Account invites)`}</FormLabel>
                             <FormControl>
                               <Input
                                 type="email"
-                                placeholder={`email${index + 1}@example.com (optional)`}
+                                placeholder={index === 0 && user ? (user.email || "your.email@example.com") : `email${index + 1}@example.com (optional)`}
                                 {...field}
                                 data-testid={`input-member-${index}-email`}
+                                readOnly={index === 0 && !!user}
                               />
                             </FormControl>
                             <FormMessage />

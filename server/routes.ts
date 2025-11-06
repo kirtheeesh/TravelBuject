@@ -276,13 +276,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const { name, amount, category, memberIds } = req.body;
       const tripsCollection = getTripsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const itemId = randomUUID();
@@ -310,13 +322,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const budgetItemsCollection = getBudgetItemsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const items = await budgetItemsCollection
@@ -345,13 +369,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { tripId, itemId } = req.params;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const budgetItemsCollection = getBudgetItemsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const result = await budgetItemsCollection.deleteOne({
@@ -375,13 +411,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const { budgetItemId, name, amount, category, memberIds } = req.body;
       const tripsCollection = getTripsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const itemId = randomUUID();
@@ -411,13 +459,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const tripId = req.params.id;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const spendingItemsCollection = getSpendingItemsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const items = await spendingItemsCollection
@@ -448,14 +508,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { tripId, itemId } = req.params;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const updates = req.body;
       const tripsCollection = getTripsCollection();
       const spendingItemsCollection = getSpendingItemsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const result = await spendingItemsCollection.updateOne(
@@ -478,13 +550,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { tripId, itemId } = req.params;
       const userId = req.session!.userId!;
+      const userEmail = req.session!.userEmail!;
       const tripsCollection = getTripsCollection();
       const spendingItemsCollection = getSpendingItemsCollection();
 
-      // Verify that the trip belongs to the current user
-      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      let trip = await tripsCollection.findOne({ _id: tripId });
       if (!trip) {
-        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+        trip = await tripsCollection.findOne({ id: tripId });
+      }
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const members = Array.isArray(trip.members) ? trip.members : [];
+      const member = members.find((m: any) => m.email === userEmail);
+      const isOwner = trip.userId === userId || member?.status === "owner";
+      const isJoinedMember = member && ["joined", "owner"].includes(member.status);
+
+      if (!isOwner && !isJoinedMember) {
+        return res.status(403).json({ message: "Access denied: You are not part of this trip" });
       }
 
       const result = await spendingItemsCollection.deleteOne({
@@ -584,7 +668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const member = trip.members[memberIndex];
       const tripIdValue = trip._id || trip.id;
       const joinedMemberIdsBefore = trip.members
-        .filter((tripMember: any) => tripMember.status === "joined")
+        .filter((tripMember: any) => ["joined", "owner"].includes(tripMember.status))
         .map((tripMember: any) => tripMember.id);
 
       if (member.status === "joined") {
@@ -621,6 +705,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const item of itemsToUpdate) {
           const identifier = item._id ? { _id: item._id } : { id: item.id };
           await budgetItemsCollection.updateOne(
+            { ...identifier, tripId: tripIdValue },
+            { $addToSet: { memberIds: member.id } }
+          );
+        }
+
+        const spendingItemsCollection = getSpendingItemsCollection();
+        const spendingItems = await spendingItemsCollection
+          .find({ tripId: tripIdValue })
+          .toArray();
+        const spendingToUpdate = spendingItems.filter((item: any) => {
+          const memberIds = Array.isArray(item.memberIds) ? item.memberIds : [];
+          if (memberIds.includes(member.id)) {
+            return false;
+          }
+          if (memberIds.length !== joinedMemberIdsBefore.length) {
+            return false;
+          }
+          return joinedMemberIdsBefore.every((id) => memberIds.includes(id));
+        });
+        for (const item of spendingToUpdate) {
+          const identifier = item._id ? { _id: item._id } : { id: item.id };
+          await spendingItemsCollection.updateOne(
             { ...identifier, tripId: tripIdValue },
             { $addToSet: { memberIds: member.id } }
           );
