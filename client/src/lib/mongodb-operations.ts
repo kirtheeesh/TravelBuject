@@ -360,7 +360,7 @@ export async function rejectInvitation(invitationCode: string): Promise<{ messag
   return await handleResponse<{ message: string }>(response);
 }
 
-export async function leaveTrip(tripId: string, memberId: string): Promise<{ message: string }> {
+async function deleteTripMember(tripId: string, memberId: string): Promise<{ message: string }> {
   const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(memberId)}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -368,4 +368,12 @@ export async function leaveTrip(tripId: string, memberId: string): Promise<{ mes
   });
 
   return await handleResponse<{ message: string }>(response);
+}
+
+export async function leaveTrip(tripId: string, memberId: string): Promise<{ message: string }> {
+  return deleteTripMember(tripId, memberId);
+}
+
+export async function removeTripMember(tripId: string, memberId: string): Promise<{ message: string }> {
+  return deleteTripMember(tripId, memberId);
 }

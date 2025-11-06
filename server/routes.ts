@@ -117,13 +117,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[POST /api/trips] Creating trip:", { tripId, userId, name, members: members?.length });
 
-      // Process members to set proper status and timestamps
-      const processedMembers = members.map((member: any) => ({
-        ...member,
-        status: member.status || (member.email ? "invited" : "joined"),
-        invitedAt: member.email ? Date.now() : undefined,
-        joinedAt: !member.email ? Date.now() : undefined,
-      }));
+      // Process members to set proper status, identifiers, and invitation metadata
+      const processedMembers = members.map((member: any, index: number) => {
+        const baseStatus = member.status || (member.email ? "invited" : "joined");
+        const isOwner = index === 0 || baseStatus === "owner";
+        const id = member.id ?? index.toString();
+        const color = member.color || MEMBER_COLORS[index % MEMBER_COLORS.length];
+        return {
+          ...member,
+          id,
+          color,
+          status: isOwner ? "owner" : baseStatus,
+          invitedAt: !isOwner && member.email ? Date.now() : member.invitedAt,
+          joinedAt: isOwner || baseStatus === "joined" ? Date.now() : undefined,
+          invitationCode: !isOwner && member.email ? member.invitationCode ?? randomUUID() : undefined,
+        };
+      });
 
       await tripsCollection.insertOne({
         _id: tripId,
@@ -816,10 +825,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const budgetItemsCollection = getBudgetItemsCollection();
       const spendingItemsCollection = getSpendingItemsCollection();
 
-      console.log("[DELETE /api/trips/:tripId/members/:memberId] Leaving trip:", { tripId, memberId, userEmail });
+      console.log("[DELETE /api/trips/:tripId/members/:memberId] Removing member:", { tripId, memberId, userEmail });
 
       const trip = await tripsCollection.findOne({
-        _id: tripId,
+        $or: [{ _id: tripId }, { id: tripId }],
         "members.id": memberId
       });
 
@@ -833,13 +842,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const member = trip.members[memberIndex];
+      const requestingMember = trip.members.find((m: any) => m.email === userEmail);
+
+      if (!requestingMember) {
+        return res.status(403).json({ message: "You are not a member of this trip" });
+      }
 
       if (member.status === "owner") {
         return res.status(400).json({ message: "Trip owner cannot leave the trip" });
       }
 
-      if (member.email && member.email !== userEmail) {
-        return res.status(403).json({ message: "You can only remove yourself from a trip" });
+      const isSelf = requestingMember.id === memberId || member.email === userEmail;
+      const isOwner = requestingMember.status === "owner";
+
+      if (!isSelf && !isOwner) {
+        return res.status(403).json({ message: "Only the trip owner can remove other members" });
       }
 
       const tripIdValue = trip._id || trip.id;
@@ -863,11 +880,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       await spendingItemsCollection.deleteMany({ tripId: tripIdValue, memberIds: { $size: 0 } });
 
-      console.log("[DELETE /api/trips/:tripId/members/:memberId] Member left trip successfully:", member.email || member.name);
-      res.json({ message: "Left trip successfully" });
+      const message = isSelf ? "Left trip successfully" : "Member removed successfully";
+      console.log("[DELETE /api/trips/:tripId/members/:memberId] Member removal success:", member.email || member.name, { performedBy: userEmail, isOwner, isSelf });
+      res.json({ message });
     } catch (error) {
       console.error("Leave trip error:", error);
-      res.status(500).json({ message: "Failed to leave trip" });
+      res.status(500).json({ message: "Failed to remove member" });
     }
   });
 

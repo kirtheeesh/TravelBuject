@@ -15,8 +15,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem, SpendingItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { subscribeToTrip, subscribeToBudgetItems, subscribeToSpendingItems, deleteBudgetItem, deleteTrip, addSpendingItem, updateSpendingItem, inviteMembers, leaveTrip, joinTrip } from "@/lib/mongodb-operations";
-import { useEffect, useState, useRef } from "react";
+import { subscribeToTrip, subscribeToBudgetItems, subscribeToSpendingItems, deleteBudgetItem, deleteTrip, addSpendingItem, updateSpendingItem, inviteMembers, leaveTrip, removeTripMember, joinTrip } from "@/lib/mongodb-operations";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useMutation } from "@tanstack/react-query";
@@ -58,12 +58,31 @@ export default function Dashboard() {
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInviting, setIsInviting] = useState(false);
-  const [invitationCodes, setInvitationCodes] = useState<Array<{ name: string; email: string; code: string }>>([]);
+  const [invitationCodes, setInvitationCodes] = useState<Array<{ name: string; email?: string; code: string }>>([]);
   const [showInvitationCodesDialog, setShowInvitationCodesDialog] = useState(false);
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<Trip["members"][number] | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
   const isInitialMount = useRef(true);
+
+  const currentMember = trip?.members.find((member) => member.email === user?.email);
+  const isCurrentUserOwner = currentMember?.status === "owner";
+
+  const defaultInvitationCodes = useMemo(() => {
+    if (!trip) return [] as Array<{ name: string; email?: string; code: string }>;
+    return trip.members
+      .filter((member) => member.status === "invited" && member.invitationCode)
+      .map((member) => ({
+        name: member.name,
+        email: member.email,
+        code: member.invitationCode as string,
+      }));
+  }, [trip]);
+
+  const activeInvitationCodes = invitationCodes.length > 0 ? invitationCodes : defaultInvitationCodes;
 
   // Real-time listener for trip
   useEffect(() => {
@@ -353,7 +372,6 @@ export default function Dashboard() {
     if (!trip || !tripId) return;
     setIsLeaving(true);
     try {
-      const currentMember = trip.members.find((member) => member.email === user?.email);
       if (!currentMember?.id) {
         throw new Error("Member record not found");
       }
@@ -372,6 +390,37 @@ export default function Dashboard() {
       });
     } finally {
       setIsLeaving(false);
+    }
+  };
+
+  const handleRemoveMember = (member: Trip["members"][number]) => {
+    if (isExploring) return;
+    if (member.status === "owner" || member.id === currentMember?.id || !member.id) {
+      return;
+    }
+    setMemberToRemove(member);
+    setShowRemoveMemberDialog(true);
+  };
+
+  const handleConfirmRemoveMember = async () => {
+    if (!tripId || !memberToRemove) return;
+    setIsRemovingMember(true);
+    try {
+      await removeTripMember(tripId, memberToRemove.id);
+      toast({
+        title: "Member removed",
+        description: `${memberToRemove.name} has been removed from "${trip?.name}".`,
+      });
+      setShowRemoveMemberDialog(false);
+      setMemberToRemove(null);
+    } catch (error: any) {
+      toast({
+        title: "Failed to remove member",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemovingMember(false);
     }
   };
 
@@ -618,7 +667,15 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
 
-            <Dialog open={showInvitationCodesDialog} onOpenChange={setShowInvitationCodesDialog}>
+            <Dialog
+              open={showInvitationCodesDialog}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setInvitationCodes([]);
+                }
+                setShowInvitationCodesDialog(open);
+              }}
+            >
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Invitation Links</DialogTitle>
@@ -627,12 +684,19 @@ export default function Dashboard() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  {invitationCodes.map((invitation, index) => {
+                  {activeInvitationCodes.length === 0 && (
+                    <div className="p-4 border rounded-lg text-sm text-muted-foreground">
+                      No pending invitations. Add members to generate invitation links.
+                    </div>
+                  )}
+                  {activeInvitationCodes.map((invitation, index) => {
                     const invitationUrl = `https://bktravelbud.onrender.com/invite/${invitation.code}`;
                     return (
                       <div key={index} className="p-4 border rounded-lg">
                         <div className="font-medium">{invitation.name}</div>
-                        <div className="text-sm text-muted-foreground">{invitation.email}</div>
+                        {invitation.email && (
+                          <div className="text-sm text-muted-foreground">{invitation.email}</div>
+                        )}
                         <div className="mt-2 p-2 bg-gray-100 rounded text-sm font-mono break-all">
                           {invitationUrl}
                         </div>
@@ -767,16 +831,29 @@ export default function Dashboard() {
         {/* Members */}
         <Card className="mb-6">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <CardTitle>Trip Members</CardTitle>
-              <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Invite Member
+              <div className="flex items-center gap-2">
+                {isCurrentUserOwner && !isExploring && defaultInvitationCodes.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setInvitationCodes(defaultInvitationCodes);
+                      setShowInvitationCodesDialog(true);
+                    }}
+                  >
+                    View Invitation Links
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
+                )}
+                <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Invite Member
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Invite New Member</DialogTitle>
                     <DialogDescription>
@@ -819,20 +896,28 @@ export default function Dashboard() {
                 </DialogContent>
               </Dialog>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+        </CardHeader>
+        <CardContent>
             <div className="flex flex-wrap gap-4">
               {trip.members.map((member, idx) => {
                 const memberInfo = memberData[idx];
+                const canRemoveMember = Boolean(
+                  isCurrentUserOwner &&
+                  !isExploring &&
+                  member.status !== "owner" &&
+                  member.id &&
+                  member.id !== currentMember?.id
+                );
                 return (
-                  <div key={member.id} className="flex items-center gap-2">
+                  <div key={member.id ?? idx} className="flex items-start gap-3 w-full sm:w-auto">
                     <Avatar className={`h-10 w-10 ${member.color}`}>
                       <AvatarFallback className="text-white">
                         {member.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="space-y-1 flex-1 min-w-[160px]">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-medium">{member.name}</p>
                         {member.status === "invited" && (
                           <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">
@@ -853,6 +938,18 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
+                    {canRemoveMember && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto self-start text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveMember(member)}
+                        aria-label={`Remove ${member.name}`}
+                        disabled={isRemovingMember}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}
@@ -1071,6 +1168,48 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {!isExploring && (
+          <AlertDialog
+            open={showRemoveMemberDialog}
+            onOpenChange={(open) => {
+              if (!isRemovingMember) {
+                setShowRemoveMemberDialog(open);
+                if (!open) {
+                  setMemberToRemove(null);
+                }
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to remove "{memberToRemove?.name}" from "{trip?.name}"? They will immediately lose access to this trip.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex gap-2 justify-end">
+                <AlertDialogCancel
+                  disabled={isRemovingMember}
+                  onClick={() => {
+                    if (!isRemovingMember) {
+                      setMemberToRemove(null);
+                    }
+                  }}
+                >
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleConfirmRemoveMember}
+                  disabled={isRemovingMember}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isRemovingMember ? "Removing..." : "Remove"}
+                </AlertDialogAction>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
 
         {/* Leave Trip Dialog */}
