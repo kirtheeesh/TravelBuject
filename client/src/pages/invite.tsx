@@ -27,8 +27,11 @@ export default function InvitePage() {
 
   const handleJoinTrip = async () => {
     if (!user) {
-      // Redirect to sign in first
-      signInWithGoogle();
+      if (invitationCode) {
+        localStorage.setItem("pendingInvite", JSON.stringify({ code: invitationCode, createdAt: Date.now() }));
+        localStorage.setItem("postLoginRedirect", `/invite/${invitationCode}`);
+      }
+      await signInWithGoogle();
       return;
     }
 

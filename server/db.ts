@@ -8,6 +8,7 @@ export interface Trip {
   id?: string;
   userId: string;
   name: string;
+  joinCode: string;
   members: any[];
   createdAt: number;
 }

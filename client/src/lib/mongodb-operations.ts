@@ -103,7 +103,7 @@ export async function getTrip(tripId: string): Promise<Trip | null> {
 
 export function subscribeToTrip(
   tripId: string,
-  onUpdate: (trip: Trip | null) => void,
+  onUpdate: (trip: Trip) => void,
   onError?: (error: Error) => void
 ): () => void {
   let isSubscribed = true;
@@ -113,7 +113,7 @@ export function subscribeToTrip(
     if (!isSubscribed) return;
     try {
       const trip = await getTrip(tripId);
-      if (isSubscribed) {
+      if (isSubscribed && trip) {
         onUpdate(trip);
       }
     } catch (error) {
@@ -124,7 +124,7 @@ export function subscribeToTrip(
   };
 
   poll();
-  pollInterval = setInterval(poll, 5000);
+  pollInterval = setInterval(poll, 2000);
 
   return () => {
     isSubscribed = false;
@@ -328,8 +328,8 @@ export async function deleteSpendingItem(tripId: string, itemId: string): Promis
 
 export async function inviteMembers(
   tripId: string,
-  members: Array<{ name: string; email: string }>
-): Promise<{ message: string; invitedMembers: Member[]; invitationCodes: Array<{ name: string; email: string; code: string }> }> {
+  members: Array<{ name: string; email?: string }>
+): Promise<{ message: string; invitedMembers: Member[]; invitationCodes: Array<{ name: string; email?: string; code: string }> }> {
   const response = await fetch(`${API_BASE}/trips/${encodeURIComponent(tripId)}/invite-members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -337,7 +337,7 @@ export async function inviteMembers(
     body: JSON.stringify({ members }),
   });
 
-  return await handleResponse<{ message: string; invitedMembers: Member[]; invitationCodes: Array<{ name: string; email: string; code: string }> }>(response);
+  return await handleResponse<{ message: string; invitedMembers: Member[]; invitationCodes: Array<{ name: string; email?: string; code: string }> }>(response);
 }
 
 export async function joinTrip(invitationCode: string): Promise<{ message: string; tripId: string; tripName: string }> {

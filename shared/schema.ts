@@ -61,6 +61,7 @@ export const tripSchema = z.object({
   id: z.string(),
   userId: z.string().optional(), // Owner's Firebase UID (optional for explore mode)
   name: z.string().min(1, "Trip name is required"),
+  joinCode: z.string().min(6),
   members: z.array(memberSchema).min(1, "At least one member is required"),
   createdAt: z.number(), // timestamp
   budgetItems: z.array(budgetItemSchema).optional(), // For explore mode

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useGoogleLogin } from "@react-oauth/google";
 import { useLocation } from "wouter";
+import { joinTrip } from "@/lib/mongodb-operations";
 import type { User } from "@shared/schema";
 
 interface AuthContextType {
@@ -67,23 +68,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const userData = await response.json();
         setUser(userData.user);
-        
-        // Verify session is established before navigating
+
         const sessionResponse = await fetch("/api/auth/session", {
           credentials: "include",
         });
-        
+
         if (!sessionResponse.ok) {
           throw new Error("Session verification failed");
         }
-        
+
+        const storedRedirect = localStorage.getItem("postLoginRedirect");
+        let destination = storedRedirect || "/home";
+
+        const pendingInviteRaw = localStorage.getItem("pendingInvite");
+        if (pendingInviteRaw) {
+          try {
+            const pendingInvite = JSON.parse(pendingInviteRaw);
+            if (pendingInvite?.code) {
+              const joinResult = await joinTrip(pendingInvite.code);
+              toast({
+                title: "Successfully joined!",
+                description: `You have joined "${joinResult.tripName}".`,
+              });
+              localStorage.setItem("justJoinedTrip", JSON.stringify({
+                tripName: joinResult.tripName,
+                timestamp: Date.now(),
+              }));
+              destination = `/dashboard/${joinResult.tripId}`;
+            }
+          } catch (error: any) {
+            toast({
+              title: "Failed to join trip",
+              description: error.message || "Unknown error occurred",
+              variant: "destructive",
+            });
+          } finally {
+            localStorage.removeItem("pendingInvite");
+          }
+        }
+
+        localStorage.removeItem("postLoginRedirect");
+
         toast({
           title: "Welcome to BkTravel!",
           description: `Signed in as ${userData.user.email}`,
         });
-        
-        // Navigate to home page after session is confirmed
-        setLocation("/home");
+
+        setLocation(destination);
       } catch (error: any) {
         console.error("Sign-in error:", error);
         toast({

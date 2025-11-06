@@ -2,13 +2,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, Users, Calendar, RefreshCw, XCircle } from "lucide-react";
+import { Plus, Users, Calendar, RefreshCw, XCircle, LogIn } from "lucide-react";
 import { IndianRupee } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Trip } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
-import { subscribeToTrips, getTrips, rejectInvitation } from "@/lib/mongodb-operations";
+import { subscribeToTrips, getTrips, rejectInvitation, joinTrip } from "@/lib/mongodb-operations";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -34,6 +36,8 @@ export default function Home() {
   const [hasShownInvitationToast, setHasShownInvitationToast] = useState(false);
   const [hasShownJoinToast, setHasShownJoinToast] = useState(false);
   const [isRejecting, setIsRejecting] = useState<string | null>(null);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [isJoiningByCode, setIsJoiningByCode] = useState(false);
 
   const pendingInvitations = useMemo(() => {
     if (!user?.email) return [];
@@ -208,6 +212,46 @@ export default function Home() {
     }
   };
 
+  const handleJoinTripByCode = async () => {
+    if (!joinCodeInput.trim()) {
+      toast({
+        title: "Invalid input",
+        description: "Please enter an invitation code.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isExploring) {
+      toast({
+        title: "Sign in required",
+        description: "Join trips with your account to save progress.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsJoiningByCode(true);
+      const result = await joinTrip(joinCodeInput.trim());
+      localStorage.setItem("justJoinedTrip", JSON.stringify({ tripName: result.tripName, timestamp: Date.now() }));
+      toast({
+        title: "Joined trip successfully!",
+        description: `You have joined "${result.tripName}".`,
+      });
+      setJoinCodeInput("");
+      await refreshTrips();
+    } catch (error: any) {
+      toast({
+        title: "Failed to join trip",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsJoiningByCode(false);
+    }
+  };
+
   const handleCreateTrip = () => {
     setLocation("/create-trip");
   };
@@ -345,6 +389,36 @@ export default function Home() {
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
+
+        <Card className="mb-8 border-dashed bg-muted/20">
+          <CardHeader>
+            <CardTitle>Join a Trip</CardTitle>
+            <CardDescription>
+              {isExploring ? "Sign in to join shared trips with your companions." : "Enter a trip invitation code to join instantly."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Label htmlFor="home-join-code">Invitation Code</Label>
+              <Input
+                id="home-join-code"
+                placeholder="Enter invitation code"
+                value={joinCodeInput}
+                onChange={(e) => setJoinCodeInput(e.target.value)}
+                disabled={isExploring}
+              />
+            </div>
+            <Button
+              size="lg"
+              className="h-12 gap-2 sm:w-auto"
+              onClick={handleJoinTripByCode}
+              disabled={isJoiningByCode || !joinCodeInput.trim() || isExploring}
+            >
+              <LogIn className="h-5 w-5" />
+              {isJoiningByCode ? "Joining..." : "Join Trip"}
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Trips Grid */}
         {isLoading ? (

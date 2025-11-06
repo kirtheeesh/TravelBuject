@@ -5,18 +5,21 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import Splash from "@/pages/splash";
-import Home from "@/pages/home";
-import AuthLoading from "@/pages/auth-loading";
-import CreateTrip from "@/pages/create-trip";
-import Dashboard from "@/pages/dashboard";
-import AddBudgetItem from "@/pages/add-budget-item";
-import Spending from "@/pages/spending";
-import InvitePage from "@/pages/invite";
-import NotFound from "@/pages/not-found";
+import { Suspense, lazy } from "react";
+
+// Lazy load page components for better performance
+const Splash = lazy(() => import("@/pages/splash"));
+const Home = lazy(() => import("@/pages/home"));
+const AuthLoading = lazy(() => import("@/pages/auth-loading"));
+const CreateTrip = lazy(() => import("@/pages/create-trip"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const AddBudgetItem = lazy(() => import("@/pages/add-budget-item"));
+const Spending = lazy(() => import("@/pages/spending"));
+const InvitePage = lazy(() => import("@/pages/invite"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 // Protected route wrapper
-function ProtectedRoute({ component: Component }: { component: () => JSX.Element }) {
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading, isExploring } = useAuth();
 
   if (loading) {
@@ -36,27 +39,35 @@ function ProtectedRoute({ component: Component }: { component: () => JSX.Element
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Splash} />
-      <Route path="/auth-loading" component={AuthLoading} />
-      <Route path="/invite/:code" component={InvitePage} />
-      <Route path="/home">
-        {() => <ProtectedRoute component={Home} />}
-      </Route>
-      <Route path="/create-trip">
-        {() => <ProtectedRoute component={CreateTrip} />}
-      </Route>
-      <Route path="/dashboard/:id">
-        {() => <ProtectedRoute component={Dashboard} />}
-      </Route>
-      <Route path="/trip/:id/add-items">
-        {() => <ProtectedRoute component={AddBudgetItem} />}
-      </Route>
-      <Route path="/spending/:id">
-        {() => <ProtectedRoute component={Spending} />}
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <Switch>
+        <Route path="/" component={Splash} />
+        <Route path="/auth-loading" component={AuthLoading} />
+        <Route path="/invite/:code" component={InvitePage} />
+        <Route path="/home">
+          {() => <ProtectedRoute component={Home} />}
+        </Route>
+        <Route path="/create-trip">
+          {() => <ProtectedRoute component={CreateTrip} />}
+        </Route>
+        <Route path="/dashboard/:id">
+          {() => <ProtectedRoute component={Dashboard} />}
+        </Route>
+        <Route path="/trip/:id/add-items">
+          {() => <ProtectedRoute component={AddBudgetItem} />}
+        </Route>
+        <Route path="/spending/:id">
+          {() => <ProtectedRoute component={Spending} />}
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

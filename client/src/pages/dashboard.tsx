@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem, SpendingItem } from "@shared/schema";
@@ -63,9 +63,11 @@ export default function Dashboard() {
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
+  const [joinCodeCopied, setJoinCodeCopied] = useState(false);
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<Trip["members"][number] | null>(null);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const isInitialMount = useRef(true);
 
   const currentMember = trip?.members.find((member) => member.email === user?.email);
@@ -253,6 +255,23 @@ export default function Dashboard() {
       });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleCopyJoinCode = async () => {
+    if (!trip?.joinCode) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(trip.joinCode);
+      setJoinCodeCopied(true);
+      setTimeout(() => setJoinCodeCopied(false), 2000);
+    } catch (error: any) {
+      toast({
+        title: "Failed to copy code",
+        description: error?.message || "Copy the code manually.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -450,25 +469,22 @@ export default function Dashboard() {
     if (!tripId || isExploring) return;
 
     if (isSpent) {
-      // Prevent multiple dialogs for the same item
-      if (showSpendDialog && itemToSpend?.id === budgetItem.id) return;
-
-      // Show confirmation dialog for spending
-      setItemToSpend(budgetItem);
-      setShowSpendDialog(true);
+      // Directly mark as spent without confirmation dialog
+      handleConfirmSpend(budgetItem);
     } else {
       // Directly unmark as spent (no confirmation needed for unchecking)
       handleConfirmUnspend(budgetItem);
     }
   };
 
-  const handleConfirmSpend = async () => {
-    if (!itemToSpend || !tripId) return;
+  const handleConfirmSpend = async (budgetItem?: BudgetItem) => {
+    const itemToProcess = budgetItem || itemToSpend;
+    if (!itemToProcess || !tripId) return;
 
     setIsSpending(true);
 
     // Optimistic update - immediately update local state
-    const existingSpendingItem = spendingItems.find(item => item.budgetItemId === itemToSpend.id);
+    const existingSpendingItem = spendingItems.find(item => item.budgetItemId === itemToProcess.id);
     if (existingSpendingItem) {
       // Update existing item to completed
       setSpendingItems(prev => prev.map(item =>
@@ -481,11 +497,11 @@ export default function Dashboard() {
       const optimisticItem: SpendingItem = {
         id: `temp-${Date.now()}`,
         tripId,
-        budgetItemId: itemToSpend.id,
-        name: itemToSpend.name,
-        amount: itemToSpend.amount,
-        category: itemToSpend.category,
-        memberIds: itemToSpend.memberIds,
+        budgetItemId: itemToProcess.id,
+        name: itemToProcess.name,
+        amount: itemToProcess.amount,
+        category: itemToProcess.category,
+        memberIds: itemToProcess.memberIds,
         createdAt: Date.now(),
         isCompleted: true,
       };
@@ -499,22 +515,24 @@ export default function Dashboard() {
       } else {
         // Create new spending item
         await addSpendingItem(tripId, {
-          budgetItemId: itemToSpend.id,
-          name: itemToSpend.name,
-          amount: itemToSpend.amount,
-          category: itemToSpend.category,
-          memberIds: itemToSpend.memberIds,
+          budgetItemId: itemToProcess.id,
+          name: itemToProcess.name,
+          amount: itemToProcess.amount,
+          category: itemToProcess.category,
+          memberIds: itemToProcess.memberIds,
         });
       }
 
       toast({
         title: "Item marked as spent",
-        description: `${itemToSpend.name} has been recorded as spent.`,
+        description: `${itemToProcess.name} has been recorded as spent.`,
       });
 
-      // Close dialog immediately after success
-      setShowSpendDialog(false);
-      setItemToSpend(null);
+      // Close dialog immediately after success (only if using dialog)
+      if (!budgetItem) {
+        setShowSpendDialog(false);
+        setItemToSpend(null);
+      }
     } catch (error: any) {
       // Revert optimistic update on error
       if (existingSpendingItem) {
@@ -627,45 +645,91 @@ export default function Dashboard() {
               Back to Trips
             </Button>
 
-            <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Join Trip
+            <div className="flex items-center gap-2">
+              {isCurrentUserOwner && !isExploring && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={isGeneratingShare}
+                  onClick={async () => {
+                    if (!tripId) return;
+                    if (invitationCodes.length === 0 && defaultInvitationCodes.length === 0) {
+                      try {
+                        setIsGeneratingShare(true);
+                        const placeholderName = trip?.name ? `${trip.name} Guest` : "Trip Member";
+                        const result = await inviteMembers(tripId, [{ name: placeholderName }]);
+                        const codes = result.invitationCodes || [];
+                        if (codes.length === 0) {
+                          toast({
+                            title: "Unable to create link",
+                            description: "Please try again in a moment.",
+                            variant: "destructive",
+                          });
+                        } else {
+                          setInvitationCodes(codes);
+                          setShowInvitationCodesDialog(true);
+                        }
+                      } catch (error: any) {
+                        toast({
+                          title: "Failed to generate link",
+                          description: error.message || "Unknown error occurred",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsGeneratingShare(false);
+                      }
+                      return;
+                    }
+                    if (invitationCodes.length === 0 && defaultInvitationCodes.length > 0) {
+                      setInvitationCodes(defaultInvitationCodes);
+                    }
+                    setShowInvitationCodesDialog(true);
+                  }}
+                >
+                  <Share2 className="h-4 w-4" />
+                  {isGeneratingShare ? "Generating..." : "Invite by Share"}
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Join a Trip</DialogTitle>
-                  <DialogDescription>
-                    Enter the invitation code you received to join a trip.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="join-code">Invitation Code</Label>
-                    <Input
-                      id="join-code"
-                      placeholder="Enter invitation code"
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value)}
-                    />
+              )}
+              <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Join Trip
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Join a Trip</DialogTitle>
+                    <DialogDescription>
+                      Enter the invitation code you received to join a trip.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="join-code">Invitation Code</Label>
+                      <Input
+                        id="join-code"
+                        placeholder="Enter invitation code"
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowJoinDialog(false)}
+                        disabled={isJoining}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={handleJoinTrip} disabled={isJoining}>
+                        {isJoining ? "Joining..." : "Join Trip"}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowJoinDialog(false)}
-                      disabled={isJoining}
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={handleJoinTrip} disabled={isJoining}>
-                      {isJoining ? "Joining..." : "Join Trip"}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            </div>
 
             <Dialog
               open={showInvitationCodesDialog}
@@ -680,7 +744,7 @@ export default function Dashboard() {
                 <DialogHeader>
                   <DialogTitle>Invitation Links</DialogTitle>
                   <DialogDescription>
-                    Share these links with the invited members so they can join the trip.
+                    Share these links with anyone you’d like to join your trip.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -693,14 +757,14 @@ export default function Dashboard() {
                     const invitationUrl = `https://bktravelbud.onrender.com/invite/${invitation.code}`;
                     return (
                       <div key={index} className="p-4 border rounded-lg">
-                        <div className="font-medium">{invitation.name}</div>
-                        {invitation.email && (
-                          <div className="text-sm text-muted-foreground">{invitation.email}</div>
-                        )}
-                        <div className="mt-2 p-2 bg-gray-100 rounded text-sm font-mono break-all">
+                        <div className="font-medium">Shareable Link {index + 1}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Anyone with this link can join "{trip?.name}" after signing in.
+                        </div>
+                        <div className="mt-3 p-2 bg-gray-100 rounded text-sm font-mono break-all">
                           {invitationUrl}
                         </div>
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex gap-2 mt-3">
                           <Button
                             variant="outline"
                             size="sm"
@@ -730,7 +794,7 @@ export default function Dashboard() {
                                 navigator.clipboard.writeText(invitationUrl);
                                 toast({
                                   title: "Link copied!",
-                                  description: "Share this link with the invited member.",
+                                  description: "Share this link with anyone you'd like to invite.",
                                 });
                               }
                             }}
@@ -750,6 +814,32 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Invitation Code Display */}
+          {trip.joinCode && (
+            <div className="mb-6 p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg font-medium">
+                    Your invitation code is: <span className="font-bold text-xl tracking-wider">{trip.joinCode}</span>
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Share this code with others to let them join your trip with their name and email.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 ml-4"
+                  onClick={handleCopyJoinCode}
+                  disabled={joinCodeCopied}
+                >
+                  {joinCodeCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {joinCodeCopied ? "Copied!" : "Copy Code"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -781,52 +871,60 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button className="gap-2" onClick={handleAddMore} data-testid="button-add-budget">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button className="gap-2 w-full sm:w-auto" onClick={handleAddMore} data-testid="button-add-budget">
                 <Plus className="h-4 w-4" />
                 Add Budget Items
               </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => setLocation(`/spending/${tripId}`)}
-                data-testid="button-view-spending"
-              >
-                <Receipt className="h-4 w-4" />
-                View Spending
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={handleDownloadPDF}
-                data-testid="button-download-pdf"
-              >
-                <Download className="h-4 w-4" />
-                Download PDF
-              </Button>
-              {!isExploring && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <Button
                   variant="outline"
-                  className="gap-2"
-                  onClick={() => setShowLeaveDialog(true)}
-                  disabled={isLeaving}
+                  className="gap-2 flex-1 sm:flex-none"
+                  onClick={() => setLocation(`/spending/${tripId}`)}
+                  data-testid="button-view-spending"
                 >
-                  <LogOut className="h-4 w-4" />
-                  {isLeaving ? "Leaving..." : "Leave Trip"}
+                  <IndianRupee className="h-4 w-4" />
+                  <span className="hidden sm:inline">View Spending</span>
+                  <span className="sm:hidden">Spending</span>
                 </Button>
-              )}
-              <Button
-                variant="destructive"
-                className="gap-2"
-                onClick={() => setShowDeleteDialog(true)}
-                data-testid="button-delete-trip"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete Trip
-              </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 flex-1 sm:flex-none"
+                  onClick={handleDownloadPDF}
+                  data-testid="button-download-pdf"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Download PDF</span>
+                  <span className="sm:hidden">PDF</span>
+                </Button>
+                {!isExploring && (
+                  <Button
+                    variant="outline"
+                    className="gap-2 flex-1 sm:flex-none"
+                    onClick={() => setShowLeaveDialog(true)}
+                    disabled={isLeaving}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span className="hidden sm:inline">{isLeaving ? "Leaving..." : "Leave Trip"}</span>
+                    <span className="sm:hidden">{isLeaving ? "Leaving..." : "Leave"}</span>
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  className="gap-2 flex-1 sm:flex-none"
+                  onClick={() => setShowDeleteDialog(true)}
+                  data-testid="button-delete-trip"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Delete Trip</span>
+                  <span className="sm:hidden">Delete</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
+
+
 
         {/* Members */}
         <Card className="mb-6">
@@ -899,7 +997,7 @@ export default function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-            <div className="flex flex-wrap gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {trip.members.map((member, idx) => {
                 const memberInfo = memberData[idx];
                 const canRemoveMember = Boolean(
@@ -910,44 +1008,53 @@ export default function Dashboard() {
                   member.id !== currentMember?.id
                 );
                 return (
-                  <div key={member.id ?? idx} className="flex items-start gap-3 w-full sm:w-auto">
-                    <Avatar className={`h-10 w-10 ${member.color}`}>
-                      <AvatarFallback className="text-white">
+                  <div key={member.id ?? idx} className="flex items-start gap-3 p-3 border rounded-lg bg-card">
+                    <Avatar className={`h-8 w-8 ${member.color}`}>
+                      <AvatarFallback className="text-white text-sm">
                         {member.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="space-y-1 flex-1 min-w-[160px]">
+                    <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium">{member.name}</p>
+                        <p className="text-sm font-medium truncate">{member.name}</p>
                         {member.status === "invited" && (
-                          <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">
+                          <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full">
                             Invited
                           </span>
                         )}
                         {member.status === "joined" && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                          <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full">
                             Joined
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground space-y-0.5">
-                        <p>Budget: ₹{memberInfo?.budgeted.toFixed(2) || "0.00"}</p>
-                        <p>Spent: ₹{memberInfo?.spent.toFixed(2) || "0.00"}</p>
-                        <p className={memberInfo?.remaining < 0 ? "text-red-500" : ""}>
-                          Remaining: ₹{memberInfo?.remaining.toFixed(2) || "0.00"}
-                        </p>
+                        <div className="flex justify-between">
+                          <span>Budget:</span>
+                          <span>₹{memberInfo?.budgeted.toFixed(2) || "0.00"}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Spent:</span>
+                          <span>₹{memberInfo?.spent.toFixed(2) || "0.00"}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={memberInfo?.remaining < 0 ? "text-red-500" : ""}>Remaining:</span>
+                          <span className={memberInfo?.remaining < 0 ? "text-red-500" : ""}>
+                            ₹{memberInfo?.remaining.toFixed(2) || "0.00"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     {canRemoveMember && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="ml-auto self-start text-destructive hover:text-destructive"
+                        className="ml-auto self-start text-destructive hover:text-destructive h-6 w-6"
                         onClick={() => handleRemoveMember(member)}
                         aria-label={`Remove ${member.name}`}
                         disabled={isRemovingMember}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
@@ -959,7 +1066,7 @@ export default function Dashboard() {
 
         {/* Charts */}
         {budgetItems.length > 0 && (
-          <div className="mb-6 grid gap-6 md:grid-cols-2">
+          <div className="mb-6 grid gap-6 lg:grid-cols-2">
             {/* Pie Chart - Category Breakdown */}
             <Card>
               <CardHeader>
@@ -1036,12 +1143,12 @@ export default function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date Added</TableHead>
+                      <TableHead className="hidden sm:table-cell">Date Added</TableHead>
                       <TableHead>Expense Item</TableHead>
-                      <TableHead>Category</TableHead>
+                      <TableHead className="hidden md:table-cell">Category</TableHead>
                       <TableHead>Total Amount</TableHead>
-                      <TableHead>Who's Paying</TableHead>
-                      <TableHead className="text-right">Each Pays</TableHead>
+                      <TableHead className="hidden lg:table-cell">Who's Paying</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Each Pays</TableHead>
                       <TableHead className="text-center">Mark as Spent</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -1051,17 +1158,31 @@ export default function Dashboard() {
                       .sort((a, b) => b.createdAt - a.createdAt)
                       .map((item) => (
                         <TableRow key={item.id} data-testid={`row-budget-item-${item.id}`}>
-                          <TableCell className="text-sm text-muted-foreground">
+                          <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
                             {new Date(item.createdAt).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="font-medium">{item.name}</TableCell>
-                          <TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                              <span>{item.name}</span>
+                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium sm:hidden">
+                                {item.category}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
                               {item.category}
                             </span>
                           </TableCell>
-                          <TableCell className="font-semibold">₹{item.amount.toFixed(2)}</TableCell>
-                          <TableCell>
+                          <TableCell className="font-semibold">
+                            <div className="flex flex-col">
+                              <span>₹{item.amount.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground sm:hidden">
+                                ₹{(item.amount / item.memberIds.length).toFixed(2)} each
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             <div className="flex -space-x-2">
                               {item.memberIds.map((memberId) => {
                                 const member = trip.members.find((m) => m.id === memberId);
@@ -1075,7 +1196,7 @@ export default function Dashboard() {
                               })}
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right hidden sm:table-cell">
                             ₹{(item.amount / item.memberIds.length).toFixed(2)}
                           </TableCell>
                           <TableCell className="text-center">
@@ -1321,7 +1442,7 @@ export default function Dashboard() {
             <div className="flex gap-2 justify-end">
               <AlertDialogCancel disabled={isSpending}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={handleConfirmSpend}
+                onClick={() => handleConfirmSpend()}
                 disabled={isSpending}
               >
                 {isSpending ? (
