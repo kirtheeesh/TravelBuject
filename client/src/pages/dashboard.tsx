@@ -9,10 +9,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check, Pencil } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check, Pencil, UserCog } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import type { Trip, BudgetItem, SpendingItem } from "@shared/schema";
+import type { Trip, BudgetItem, SpendingItem, Member } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { subscribeToTrip, subscribeToBudgetItems, subscribeToSpendingItems, deleteBudgetItem, deleteTrip, addSpendingItem, updateSpendingItem, inviteMembers, leaveTrip, removeTripMember, joinTrip, updateTripMember } from "@/lib/mongodb-operations";
@@ -72,16 +73,21 @@ export default function Dashboard() {
   const [memberToRename, setMemberToRename] = useState<Trip["members"][number] | null>(null);
   const [renameMemberName, setRenameMemberName] = useState("");
   const [isRenamingMember, setIsRenamingMember] = useState(false);
+  const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
+  const [memberToChangeStatus, setMemberToChangeStatus] = useState<Trip["members"][number] | null>(null);
+  const [newMemberStatus, setNewMemberStatus] = useState<Member['status'] | undefined>(undefined);
+  const [isChangingMemberStatus, setIsChangingMemberStatus] = useState(false);
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const [showRecordSpendingDialog, setShowRecordSpendingDialog] = useState(false);
   const [selectedBudgetItem, setSelectedBudgetItem] = useState<BudgetItem | null>(null);
   const [spendingAmount, setSpendingAmount] = useState("");
-  const [spendingName, setSpendingName] = useState("");
+
   const [isRecordingSpending, setIsRecordingSpending] = useState(false);
   const isInitialMount = useRef(true);
 
   const currentMember = trip?.members.find((member) => member.email === user?.email);
   const isCurrentUserOwner = currentMember?.status === "owner";
+  const isCurrentUserOrganizer = currentMember?.status === "owner" || currentMember?.status === "co-organizer";
 
   const defaultInvitationCodes = useMemo(() => {
     if (!trip) return [] as Array<{ name: string; email?: string; code: string }>;
@@ -99,7 +105,10 @@ export default function Dashboard() {
   // Calculate remaining balance for a budget item
   const getRemainingBalance = (budgetItem: BudgetItem) => {
     const spentAmount = spendingItems
-      .filter(item => item.budgetItemId === budgetItem.id && item.isCompleted)
+      .filter(item => item.isCompleted && (
+        item.budgetItemId === budgetItem.id ||
+        (!item.budgetItemId && item.name.toLowerCase() === budgetItem.name.toLowerCase())
+      ))
       .reduce((sum, item) => sum + item.amount, 0);
     return budgetItem.amount - spentAmount;
   };
@@ -448,6 +457,15 @@ export default function Dashboard() {
     setShowRenameMemberDialog(true);
   };
 
+  const handleChangeMemberStatus = (member: Trip["members"][number]) => {
+    if (isExploring || !member.id || member.status === "owner") {
+      return;
+    }
+    setMemberToChangeStatus(member);
+    setNewMemberStatus(member.status);
+    setShowChangeStatusDialog(true);
+  };
+
   const handleConfirmRenameMember = async () => {
     if (!tripId || !memberToRename || !memberToRename.id) {
       return;
@@ -502,6 +520,32 @@ export default function Dashboard() {
       });
     } finally {
       setIsRemovingMember(false);
+    }
+  };
+
+  const handleConfirmChangeMemberStatus = async () => {
+    if (!tripId || !memberToChangeStatus || !memberToChangeStatus.id) {
+      return;
+    }
+    setIsChangingMemberStatus(true);
+    try {
+      const updatedMember = await updateTripMember(tripId, memberToChangeStatus.id, { name: memberToChangeStatus.name, status: newMemberStatus! });
+      setTrip(prev => prev ? { ...prev, members: prev.members.map((member) => member.id === updatedMember.id ? updatedMember : member) } : prev);
+      toast({
+        title: "Member status updated",
+        description: `${memberToChangeStatus.name} is now a ${newMemberStatus === "co-organizer" ? "co-organizer" : newMemberStatus}.`,
+      });
+      setShowChangeStatusDialog(false);
+      setMemberToChangeStatus(null);
+      setNewMemberStatus(undefined);
+    } catch (error: any) {
+      toast({
+        title: "Failed to update member status",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingMemberStatus(false);
     }
   };
 
@@ -584,11 +628,6 @@ export default function Dashboard() {
           memberIds: itemToProcess.memberIds,
         });
       }
-
-      toast({
-        title: "Item marked as spent",
-        description: `${itemToProcess.name} has been recorded as spent.`,
-      });
 
       // Close dialog immediately after success (only if using dialog)
       if (!budgetItem) {
@@ -708,7 +747,7 @@ export default function Dashboard() {
             </Button>
 
             <div className="flex items-center gap-2">
-              {isCurrentUserOwner && !isExploring && (
+              {isCurrentUserOrganizer && !isExploring && (
                 <Button
                   variant="outline"
                   className="gap-2"
@@ -994,7 +1033,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-2">
               <CardTitle>Trip Members</CardTitle>
               <div className="flex items-center gap-2">
-                {isCurrentUserOwner && !isExploring && defaultInvitationCodes.length > 0 && (
+                {isCurrentUserOrganizer && !isExploring && defaultInvitationCodes.length > 0 && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1063,14 +1102,14 @@ export default function Dashboard() {
               {trip.members.map((member, idx) => {
                 const memberInfo = memberData[idx];
                 const canRemoveMember = Boolean(
-                  isCurrentUserOwner &&
+                  isCurrentUserOrganizer &&
                   !isExploring &&
                   member.status !== "owner" &&
                   member.id &&
                   member.id !== currentMember?.id
                 );
                 const canRenameMember = Boolean(
-                  isCurrentUserOwner &&
+                  isCurrentUserOrganizer &&
                   !isExploring &&
                   member.id
                 );
@@ -1084,6 +1123,16 @@ export default function Dashboard() {
                     <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-medium truncate">{member.name}</p>
+                        {member.status === "owner" && (
+                          <span className="text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded-full">
+                            Owner
+                          </span>
+                        )}
+                        {member.status === "co-organizer" && (
+                          <span className="text-xs bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full">
+                            Co-organizer
+                          </span>
+                        )}
                         {member.status === "invited" && (
                           <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full">
                             Invited
@@ -1112,7 +1161,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
-                    {(canRenameMember || canRemoveMember) && (
+                    {(canRenameMember || canRemoveMember || (isCurrentUserOwner && member.status !== "owner")) && (
                       <div className="ml-auto flex items-start gap-1">
                         {canRenameMember && (
                           <Button
@@ -1124,6 +1173,18 @@ export default function Dashboard() {
                             disabled={isRenamingMember}
                           >
                             <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {isCurrentUserOwner && member.status !== "owner" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handleChangeMemberStatus(member)}
+                            aria-label={`Change status for ${member.name}`}
+                            disabled={isChangingMemberStatus}
+                          >
+                            <UserCog className="h-3 w-3" />
                           </Button>
                         )}
                         {canRemoveMember && (
@@ -1226,7 +1287,6 @@ export default function Dashboard() {
                       <TableHead className="hidden sm:table-cell">Date Added</TableHead>
                       <TableHead>Expense Item</TableHead>
                       <TableHead className="hidden md:table-cell">Category</TableHead>
-                      <TableHead>Total Budget</TableHead>
                       <TableHead>Remaining</TableHead>
                       <TableHead className="hidden lg:table-cell">Who's Paying</TableHead>
                       <TableHead className="text-right hidden sm:table-cell">Each Pays</TableHead>
@@ -1237,7 +1297,7 @@ export default function Dashboard() {
                   <TableBody>
                     {budgetItems
                       .filter(item => getRemainingBalance(item) > 0)
-                      .sort((a, b) => getRemainingBalance(a) - getRemainingBalance(b))
+                      .sort((a, b) => b.amount - a.amount)
                       .map((item) => (
                         <TableRow key={item.id} data-testid={`row-remaining-budget-item-${item.id}`}>
                           <TableCell className="text-sm text-muted-foreground hidden sm:table-cell">
@@ -1262,14 +1322,6 @@ export default function Dashboard() {
                             <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
                               {item.category}
                             </span>
-                          </TableCell>
-                          <TableCell className="font-semibold">
-                            <div className="flex flex-col">
-                              <span>₹{item.amount.toFixed(2)}</span>
-                              <span className="text-xs text-muted-foreground sm:hidden">
-                                ₹{(item.amount / item.memberIds.length).toFixed(2)} each
-                              </span>
-                            </div>
                           </TableCell>
                           <TableCell className="font-semibold">
                             <span className={`text-sm ${getRemainingBalance(item) > 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1603,6 +1655,62 @@ export default function Dashboard() {
           </AlertDialog>
         )}
 
+        {!isExploring && (
+          <Dialog
+            open={showChangeStatusDialog}
+            onOpenChange={(open) => {
+              if (!isChangingMemberStatus) {
+                setShowChangeStatusDialog(open);
+                if (!open) {
+                  setMemberToChangeStatus(null);
+                  setNewMemberStatus(undefined);
+                }
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Change Member Status</DialogTitle>
+                <DialogDescription>
+                  Update the member's role in this trip. Co-organizers have the same permissions as the trip owner.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="member-status">Status</Label>
+                  <Select value={newMemberStatus || ""} onValueChange={(value) => setNewMemberStatus(value as Member['status'])}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="joined">Member</SelectItem>
+                      <SelectItem value="co-organizer">Co-organizer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (!isChangingMemberStatus) {
+                        setShowChangeStatusDialog(false);
+                        setMemberToChangeStatus(null);
+                        setNewMemberStatus(undefined);
+                      }
+                    }}
+                    disabled={isChangingMemberStatus}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleConfirmChangeMemberStatus} disabled={isChangingMemberStatus || !newMemberStatus}>
+                    {isChangingMemberStatus ? "Updating..." : "Update Status"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
         {/* Leave Trip Dialog */}
         {!isExploring && (
           <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
@@ -1754,19 +1862,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="spending-name">Spending Name (Optional)</Label>
-                  <Input
-                    id="spending-name"
-                    type="text"
-                    placeholder={`e.g., ${selectedBudgetItem.name}`}
-                    value={spendingName}
-                    onChange={(e) => setSpendingName(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty to use the budget item name
-                  </p>
-                </div>
+
 
                 <div className="space-y-2">
                   <Label htmlFor="spending-amount">Amount Spent (₹)</Label>
@@ -1792,7 +1888,6 @@ export default function Dashboard() {
                       setShowRecordSpendingDialog(false);
                       setSelectedBudgetItem(null);
                       setSpendingAmount("");
-                      setSpendingName("");
                     }}
                   >
                     Cancel
@@ -1815,21 +1910,15 @@ export default function Dashboard() {
                       try {
                         await addSpendingItem(tripId, {
                           budgetItemId: selectedBudgetItem.id,
-                          name: spendingName.trim() || selectedBudgetItem.name,
+                          name: selectedBudgetItem.name,
                           amount: amount,
                           category: selectedBudgetItem.category,
                           memberIds: selectedBudgetItem.memberIds,
                         });
 
-                        toast({
-                          title: "Spending recorded",
-                          description: `₹${amount.toFixed(2)} recorded for ${selectedBudgetItem.name}`,
-                        });
-
                         setShowRecordSpendingDialog(false);
                         setSelectedBudgetItem(null);
                         setSpendingAmount("");
-                        setSpendingName("");
                       } catch (error: any) {
                         toast({
                           title: "Failed to record spending",

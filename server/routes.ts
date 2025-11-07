@@ -721,12 +721,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/trips/:tripId/members/:memberId", ensureAuth, async (req: Request, res: Response) => {
     try {
       const { tripId, memberId } = req.params;
-      const { name } = req.body;
+      const { name, status } = req.body;
       const userId = req.session!.userId!;
       const tripsCollection = getTripsCollection();
 
-      if (typeof name !== "string" || !name.trim()) {
-        return res.status(400).json({ message: "Member name is required" });
+      // Validate that at least one field is provided
+      if ((!name || typeof name !== "string" || !name.trim()) && !status) {
+        return res.status(400).json({ message: "Either member name or status is required" });
+      }
+
+      // Validate status if provided
+      if (status && !["owner", "co-organizer", "joined", "invited", "pending"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status value" });
       }
 
       let trip = await tripsCollection.findOne({ _id: tripId, userId });
@@ -743,13 +749,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Member not found" });
       }
 
-      const trimmedName = name.trim();
-      members[memberIndex] = { ...members[memberIndex], name: trimmedName };
+      const updates: any = {};
+      if (name && typeof name === "string" && name.trim()) {
+        updates.name = name.trim();
+      }
+      if (status) {
+        updates.status = status;
+      }
+
+      members[memberIndex] = { ...members[memberIndex], ...updates };
 
       const identifier = trip._id ? { _id: trip._id } : { id: trip.id };
       await tripsCollection.updateOne(identifier, { $set: { members } });
 
-      console.log("[PATCH /api/trips/:tripId/members/:memberId] Member updated", { tripId: trip._id || trip.id, memberId, name: trimmedName });
+      console.log("[PATCH /api/trips/:tripId/members/:memberId] Member updated", { tripId: trip._id || trip.id, memberId, updates });
       res.json({ message: "Member updated successfully", member: members[memberIndex] });
     } catch (error) {
       console.error("Update member error:", error);
@@ -1099,8 +1112,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const member = trip.members[memberIndex];
 
+      // Prevent changing owner status
+      if (updates.status && member.status === 'owner') {
+        return res.status(400).json({ message: "Cannot change owner status" });
+      }
+
       // Prevent updating owner status or critical fields
-      const allowedUpdates = ['name', 'color'];
+      const allowedUpdates = ['name', 'color', 'status'];
       const filteredUpdates = Object.keys(updates)
         .filter(key => allowedUpdates.includes(key))
         .reduce((obj, key) => {

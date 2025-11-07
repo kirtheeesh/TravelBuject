@@ -381,7 +381,7 @@ export async function removeTripMember(tripId: string, memberId: string): Promis
 export async function updateTripMember(
   tripId: string,
   memberId: string,
-  updates: { name: string }
+  updates: Partial<{ name: string; status: Member['status'] }>
 ): Promise<Member> {
   const response = await fetch(
     `${API_BASE}/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(memberId)}`,

@@ -6,7 +6,7 @@ export const memberSchema = z.object({
   name: z.string().min(1, "Member name is required"),
   email: z.string().email("Valid email is required").optional(),
   color: z.string(), // For avatar background color
-  status: z.enum(["owner", "joined", "invited", "pending"]).default("pending"),
+  status: z.enum(["owner", "co-organizer", "joined", "invited", "pending"]).default("pending"),
   invitedAt: z.number().optional(), // timestamp when invited
   joinedAt: z.number().optional(), // timestamp when joined
   invitationCode: z.string().optional(), // unique code for joining the trip
