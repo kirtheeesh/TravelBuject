@@ -5,6 +5,8 @@ import { verifyGoogleToken } from "./auth";
 import { randomUUID } from "crypto";
 
 const MEMBER_COLORS = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-teal-500"];
+const INVITATION_LINK_EXPIRY_MS = 24 * 60 * 60 * 1000;
+const INVITATION_LINK_MAX_USES_PER_DAY = 20;
 
 function generateJoinCode() {
   return randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
@@ -658,19 +660,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("[POST /api/trips/:id/invite-members] Inviting members:", { tripId, members: members?.length });
 
+      const now = Date.now();
       const newMembers = members.map((member: any, index: number) => {
         const invitationCode = randomUUID();
         const rawName = typeof member.name === "string" ? member.name.trim() : "";
         const rawEmail = typeof member.email === "string" ? member.email.trim() : "";
         const name = rawName || `Trip Guest ${trip.members.length + index + 1}`;
         const email = rawEmail || undefined;
+        const invitedAt = Date.now();
         return {
           id: randomUUID(),
           name,
           email,
           color: MEMBER_COLORS[(trip.members.length + index) % MEMBER_COLORS.length],
           status: "invited",
-          invitedAt: Date.now(),
+          invitedAt,
           invitationCode,
         };
       });
@@ -680,8 +684,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map((member: any) => ({
           code: member.invitationCode,
           label: member.name,
-          createdAt: Date.now(),
+          createdAt: now,
           createdBy: userId,
+          usageCount: 0,
+          usageWindowStart: now,
         }));
 
       const updatedMembers = [...trip.members, ...newMembers];
@@ -762,6 +768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userEmail = req.session!.userEmail!;
       const userName = req.session!.userName || userEmail?.split("@")[0] || "Traveler";
       const displayName = typeof userName === "string" && userName.trim() ? userName.trim() : userEmail?.split("@")[0] || "Traveler";
+      const now = Date.now();
       const tripsCollection = getTripsCollection();
 
       console.log("[POST /api/join/:code] Joining trip with code:", trimmedCode, "for user:", userEmail);
@@ -796,6 +803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let updatedMembers = members;
       let activeMember: any = null;
+      let shareLinkUsageUpdate: { index: number; usageCount: number; usageWindowStart: number } | null = null;
 
       if (isJoinCode) {
         const newMember = {
@@ -804,85 +812,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: userEmail,
           color: MEMBER_COLORS[members.length % MEMBER_COLORS.length],
           status: "joined",
-          invitedAt: Date.now(),
-          joinedAt: Date.now(),
+          invitedAt: now,
+          joinedAt: now,
         };
         updatedMembers = [...members, newMember];
         activeMember = newMember;
       } else {
-        // Check if it's a share link code
         const shareLinks = Array.isArray((trip as any).shareLinks) ? (trip as any).shareLinks : [];
         const shareEntry = shareLinks.find((link: any) => link.code === trimmedCode);
 
         if (shareEntry) {
-          // Share link - automatically join like invitation code
+          const shareLinkIndex = shareLinks.findIndex((link: any) => link.code === trimmedCode);
+          const shareCreatedAtValue = typeof shareEntry.createdAt === "number" ? shareEntry.createdAt : 0;
+
+          if (shareCreatedAtValue && now - shareCreatedAtValue > INVITATION_LINK_EXPIRY_MS) {
+            await tripsCollection.updateOne(
+              { _id: tripIdValue },
+              {
+                $pull: {
+                  members: { invitationCode: trimmedCode, status: "invited" },
+                  shareLinks: { code: trimmedCode },
+                },
+              }
+            );
+            return res.status(404).json({ message: "Invalid or expired invitation link" });
+          }
+
+          let usageWindowStart = typeof shareEntry.usageWindowStart === "number" ? shareEntry.usageWindowStart : shareCreatedAtValue || now;
+          let usageCount = typeof shareEntry.usageCount === "number" ? shareEntry.usageCount : 0;
+
+          if (now - usageWindowStart >= INVITATION_LINK_EXPIRY_MS) {
+            usageWindowStart = now;
+            usageCount = 0;
+          }
+
+          if (usageCount >= INVITATION_LINK_MAX_USES_PER_DAY) {
+            return res.status(429).json({ message: "This invitation link has reached its daily limit" });
+          }
+
+          usageCount += 1;
+          shareLinkUsageUpdate = { index: shareLinkIndex, usageCount, usageWindowStart };
+
           const newMember = {
             id: randomUUID(),
             name: displayName,
             email: userEmail,
             color: MEMBER_COLORS[members.length % MEMBER_COLORS.length],
             status: "joined",
-            invitedAt: Date.now(),
-            joinedAt: Date.now(),
+            invitedAt: now,
+            joinedAt: now,
           };
           updatedMembers = [...members, newMember];
           activeMember = newMember;
           console.log("[POST /api/join/:code] User joined via share link", { code: trimmedCode, member: newMember });
         } else {
-          // Regular invitation code - find existing member
           let memberIndex = members.findIndex((member: any) => member.invitationCode === trimmedCode);
-        if (memberIndex === -1) {
-          console.log("[POST /api/join/:code] Invitation code not found in members", {
-            code: trimmedCode,
-            membersWithCodes: members
-              .filter((m: any) => m.invitationCode)
-              .map((m: any) => ({ id: m.id, name: m.name, email: m.email, invitationCode: m.invitationCode, status: m.status })),
-          });
-          return res.status(404).json({ message: "Member not found" });
-        }
-
-        const member = members[memberIndex];
-        const originalEmail = member.email;
-
-        if (member.status === "joined") {
-          if (member.email === userEmail) {
-            return res.json({ message: "You have already joined this trip", tripId: tripIdValue, tripName: trip.name });
+          if (memberIndex === -1) {
+            console.log("[POST /api/join/:code] Invitation code not found in members", {
+              code: trimmedCode,
+              membersWithCodes: members
+                .filter((m: any) => m.invitationCode)
+                .map((m: any) => ({ id: m.id, name: m.name, email: m.email, invitationCode: m.invitationCode, status: m.status })),
+            });
+            return res.status(404).json({ message: "Member not found" });
           }
-          return res.status(409).json({ message: "This invitation link has already been used" });
-        }
 
-        const joinedMember = {
-          ...member,
-          status: "joined",
-          joinedAt: Date.now(),
-          email: userEmail,
-          name: displayName,
-        };
-        if (!originalEmail) {
-          joinedMember.invitationCode = undefined;
-        }
+          const member = members[memberIndex];
+          const originalEmail = member.email;
+          const invitedAtValue = typeof member.invitedAt === "number" ? member.invitedAt : undefined;
 
-        updatedMembers = [...members];
-        updatedMembers[memberIndex] = joinedMember;
-        activeMember = updatedMembers[memberIndex];
+          if (invitedAtValue && now - invitedAtValue > INVITATION_LINK_EXPIRY_MS) {
+            await tripsCollection.updateOne(
+              { _id: tripIdValue },
+              {
+                $pull: {
+                  members: { invitationCode: trimmedCode, status: "invited" },
+                },
+              }
+            );
+            return res.status(404).json({ message: "Invalid or expired invitation link" });
+          }
 
-        if (!originalEmail) {
-          const shareColorIndex = updatedMembers.length % MEMBER_COLORS.length;
-          updatedMembers.push({
-            id: randomUUID(),
-            name: member.name || `${trip.name || "Trip"} Guest`,
-            color: MEMBER_COLORS[shareColorIndex],
-            status: "invited",
-            invitedAt: Date.now(),
-            invitationCode: trimmedCode,
-          });
+          if (member.status === "joined") {
+            if (member.email === userEmail) {
+              return res.json({ message: "You have already joined this trip", tripId: tripIdValue, tripName: trip.name });
+            }
+            return res.status(409).json({ message: "This invitation link has already been used" });
+          }
+
+          const joinedMember = {
+            ...member,
+            status: "joined",
+            joinedAt: now,
+            email: userEmail,
+            name: displayName,
+          };
+          if (!originalEmail) {
+            joinedMember.invitationCode = undefined;
+          }
+
+          updatedMembers = [...members];
+          updatedMembers[memberIndex] = joinedMember;
+          activeMember = updatedMembers[memberIndex];
+
+          if (!originalEmail) {
+            const shareColorIndex = updatedMembers.length % MEMBER_COLORS.length;
+            updatedMembers.push({
+              id: randomUUID(),
+              name: member.name || `${trip.name || "Trip"} Guest`,
+              color: MEMBER_COLORS[shareColorIndex],
+              status: "invited",
+              invitedAt: now,
+              invitationCode: trimmedCode,
+            });
+          }
         }
-        }
+      }
+
+      const updateDoc: any = { $set: { members: updatedMembers } };
+      if (shareLinkUsageUpdate) {
+        updateDoc.$set[`shareLinks.${shareLinkUsageUpdate.index}.usageCount`] = shareLinkUsageUpdate.usageCount;
+        updateDoc.$set[`shareLinks.${shareLinkUsageUpdate.index}.usageWindowStart`] = shareLinkUsageUpdate.usageWindowStart;
       }
 
       await tripsCollection.updateOne(
         { _id: tripIdValue },
-        { $set: { members: updatedMembers } }
+        updateDoc
       );
 
       if (joinedMemberIdsBefore.length > 0 && activeMember?.id) {
