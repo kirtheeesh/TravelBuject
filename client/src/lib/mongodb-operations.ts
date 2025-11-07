@@ -377,3 +377,22 @@ export async function leaveTrip(tripId: string, memberId: string): Promise<{ mes
 export async function removeTripMember(tripId: string, memberId: string): Promise<{ message: string }> {
   return deleteTripMember(tripId, memberId);
 }
+
+export async function updateTripMember(
+  tripId: string,
+  memberId: string,
+  updates: { name: string }
+): Promise<Member> {
+  const response = await fetch(
+    `${API_BASE}/trips/${encodeURIComponent(tripId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(updates),
+    }
+  );
+
+  const result = await handleResponse<{ message: string; member: Member }>(response);
+  return result.member;
+}

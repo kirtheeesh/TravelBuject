@@ -712,6 +712,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/trips/:tripId/members/:memberId", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { tripId, memberId } = req.params;
+      const { name } = req.body;
+      const userId = req.session!.userId!;
+      const tripsCollection = getTripsCollection();
+
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Member name is required" });
+      }
+
+      let trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        trip = await tripsCollection.findOne({ id: tripId, userId });
+      }
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: This trip is not yours" });
+      }
+
+      const members = Array.isArray(trip.members) ? [...trip.members] : [];
+      const memberIndex = members.findIndex((member: any) => member.id === memberId);
+      if (memberIndex === -1) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      const trimmedName = name.trim();
+      members[memberIndex] = { ...members[memberIndex], name: trimmedName };
+
+      const identifier = trip._id ? { _id: trip._id } : { id: trip.id };
+      await tripsCollection.updateOne(identifier, { $set: { members } });
+
+      console.log("[PATCH /api/trips/:tripId/members/:memberId] Member updated", { tripId: trip._id || trip.id, memberId, name: trimmedName });
+      res.json({ message: "Member updated successfully", member: members[memberIndex] });
+    } catch (error) {
+      console.error("Update member error:", error);
+      res.status(500).json({ message: "Failed to update member" });
+    }
+  });
+
   app.post("/api/join/:code", ensureAuth, async (req: Request, res: Response) => {
     try {
       const rawCode = req.params.code;
@@ -722,6 +761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const upperCode = trimmedCode.toUpperCase();
       const userEmail = req.session!.userEmail!;
       const userName = req.session!.userName || userEmail?.split("@")[0] || "Traveler";
+      const displayName = typeof userName === "string" && userName.trim() ? userName.trim() : userEmail?.split("@")[0] || "Traveler";
       const tripsCollection = getTripsCollection();
 
       console.log("[POST /api/join/:code] Joining trip with code:", trimmedCode, "for user:", userEmail);
@@ -778,7 +818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Share link - automatically join like invitation code
           const newMember = {
             id: randomUUID(),
-            name: shareEntry.label || userName,
+            name: displayName,
             email: userEmail,
             color: MEMBER_COLORS[members.length % MEMBER_COLORS.length],
             status: "joined",
@@ -816,7 +856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: "joined",
           joinedAt: Date.now(),
           email: userEmail,
-          name: member.name || userName,
+          name: displayName,
         };
         if (!originalEmail) {
           joinedMember.invitationCode = undefined;
@@ -907,7 +947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      console.log("[POST /api/join/:code] Member joined successfully:", activeMember?.name || userName);
+      console.log("[POST /api/join/:code] Member joined successfully:", activeMember?.name || displayName);
       res.json({
         message: "Successfully joined the trip!",
         tripId: tripIdValue,
@@ -979,6 +1019,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Reject invitation error:", error);
       res.status(500).json({ message: "Failed to reject invitation" });
+    }
+  });
+
+  app.patch("/api/trips/:tripId/members/:memberId", ensureAuth, async (req: Request, res: Response) => {
+    try {
+      const { tripId, memberId } = req.params;
+      const userId = req.session!.userId!;
+      const updates = req.body;
+      const tripsCollection = getTripsCollection();
+
+      console.log("[PATCH /api/trips/:tripId/members/:memberId] Updating member:", { tripId, memberId, userId, updates });
+
+      // Verify that the trip belongs to the current user (owner only)
+      const trip = await tripsCollection.findOne({ _id: tripId, userId });
+      if (!trip) {
+        return res.status(403).json({ message: "Access denied: Only trip owner can update members" });
+      }
+
+      const memberIndex = trip.members.findIndex((member: any) => member.id === memberId);
+      if (memberIndex === -1) {
+        return res.status(404).json({ message: "Member not found" });
+      }
+
+      const member = trip.members[memberIndex];
+
+      // Prevent updating owner status or critical fields
+      const allowedUpdates = ['name', 'color'];
+      const filteredUpdates = Object.keys(updates)
+        .filter(key => allowedUpdates.includes(key))
+        .reduce((obj, key) => {
+          obj[key] = updates[key];
+          return obj;
+        }, {} as any);
+
+      if (Object.keys(filteredUpdates).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      // Update the member
+      const updatedMembers = [...trip.members];
+      updatedMembers[memberIndex] = { ...member, ...filteredUpdates };
+
+      await tripsCollection.updateOne(
+        { _id: tripId },
+        { $set: { members: updatedMembers } }
+      );
+
+      console.log("[PATCH /api/trips/:tripId/members/:memberId] Member updated successfully:", memberId);
+      res.json({
+        message: "Member updated successfully",
+        member: updatedMembers[memberIndex]
+      });
+    } catch (error) {
+      console.error("Update member error:", error);
+      res.status(500).json({ message: "Failed to update member" });
     }
   });
 

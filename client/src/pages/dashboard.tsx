@@ -9,13 +9,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check, Pencil } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem, SpendingItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { subscribeToTrip, subscribeToBudgetItems, subscribeToSpendingItems, deleteBudgetItem, deleteTrip, addSpendingItem, updateSpendingItem, inviteMembers, leaveTrip, removeTripMember, joinTrip } from "@/lib/mongodb-operations";
+import { subscribeToTrip, subscribeToBudgetItems, subscribeToSpendingItems, deleteBudgetItem, deleteTrip, addSpendingItem, updateSpendingItem, inviteMembers, leaveTrip, removeTripMember, joinTrip, updateTripMember } from "@/lib/mongodb-operations";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
@@ -68,6 +68,10 @@ export default function Dashboard() {
   const [showRemoveMemberDialog, setShowRemoveMemberDialog] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<Trip["members"][number] | null>(null);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
+  const [showRenameMemberDialog, setShowRenameMemberDialog] = useState(false);
+  const [memberToRename, setMemberToRename] = useState<Trip["members"][number] | null>(null);
+  const [renameMemberName, setRenameMemberName] = useState("");
+  const [isRenamingMember, setIsRenamingMember] = useState(false);
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const [showRecordSpendingDialog, setShowRecordSpendingDialog] = useState(false);
   const [selectedBudgetItem, setSelectedBudgetItem] = useState<BudgetItem | null>(null);
@@ -433,6 +437,50 @@ export default function Dashboard() {
     }
     setMemberToRemove(member);
     setShowRemoveMemberDialog(true);
+  };
+
+  const handleRenameMember = (member: Trip["members"][number]) => {
+    if (isExploring || !member.id) {
+      return;
+    }
+    setMemberToRename(member);
+    setRenameMemberName(member.name || "");
+    setShowRenameMemberDialog(true);
+  };
+
+  const handleConfirmRenameMember = async () => {
+    if (!tripId || !memberToRename || !memberToRename.id) {
+      return;
+    }
+    const trimmedName = renameMemberName.trim();
+    if (!trimmedName) {
+      toast({
+        title: "Invalid name",
+        description: "Member name cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsRenamingMember(true);
+    try {
+      const updatedMember = await updateTripMember(tripId, memberToRename.id, { name: trimmedName });
+      setTrip(prev => prev ? { ...prev, members: prev.members.map((member) => member.id === updatedMember.id ? updatedMember : member) } : prev);
+      toast({
+        title: "Member updated",
+        description: `${trimmedName} has been updated.`,
+      });
+      setShowRenameMemberDialog(false);
+      setMemberToRename(null);
+      setRenameMemberName("");
+    } catch (error: any) {
+      toast({
+        title: "Failed to update member",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRenamingMember(false);
+    }
   };
 
   const handleConfirmRemoveMember = async () => {
@@ -1021,11 +1069,16 @@ export default function Dashboard() {
                   member.id &&
                   member.id !== currentMember?.id
                 );
+                const canRenameMember = Boolean(
+                  isCurrentUserOwner &&
+                  !isExploring &&
+                  member.id
+                );
                 return (
                   <div key={member.id ?? idx} className="flex items-start gap-3 p-3 border rounded-lg bg-card">
                     <Avatar className={`h-8 w-8 ${member.color}`}>
                       <AvatarFallback className={`${LIGHT_MEMBER_COLORS.includes(member.color) ? 'text-black' : 'text-white'} text-sm font-semibold`}>
-                        {member.name.charAt(0).toUpperCase()}
+                        {member.name?.charAt(0)?.toUpperCase() || "?"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="space-y-1 flex-1 min-w-0">
@@ -1059,17 +1112,33 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
-                    {canRemoveMember && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="ml-auto self-start text-destructive hover:text-destructive h-6 w-6"
-                        onClick={() => handleRemoveMember(member)}
-                        aria-label={`Remove ${member.name}`}
-                        disabled={isRemovingMember}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                    {(canRenameMember || canRemoveMember) && (
+                      <div className="ml-auto flex items-start gap-1">
+                        {canRenameMember && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handleRenameMember(member)}
+                            aria-label={`Rename ${member.name}`}
+                            disabled={isRenamingMember}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {canRemoveMember && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="self-start text-destructive hover:text-destructive h-6 w-6"
+                            onClick={() => handleRemoveMember(member)}
+                            aria-label={`Remove ${member.name}`}
+                            disabled={isRemovingMember}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -1214,7 +1283,7 @@ export default function Dashboard() {
                                 return member ? (
                                   <Avatar key={memberId} className={`h-7 w-7 border-2 border-background ${member.color}`}>
                                     <AvatarFallback className="text-xs text-white">
-                                      {member.name.charAt(0).toUpperCase()}
+                                      {member.name?.charAt(0)?.toUpperCase() || "?"}
                                     </AvatarFallback>
                                   </Avatar>
                                 ) : null;
@@ -1344,7 +1413,7 @@ export default function Dashboard() {
                                 return member ? (
                                   <Avatar key={memberId} className={`h-7 w-7 border-2 border-background ${member.color}`}>
                                     <AvatarFallback className="text-xs text-white">
-                                      {member.name.charAt(0).toUpperCase()}
+                                      {member.name?.charAt(0)?.toUpperCase() || "?"}
                                     </AvatarFallback>
                                   </Avatar>
                                 ) : null;
@@ -1420,7 +1489,7 @@ export default function Dashboard() {
                                 return member ? (
                                   <Avatar key={memberId} className={`h-7 w-7 border-2 border-background ${member.color}`}>
                                     <AvatarFallback className="text-xs text-white">
-                                      {member.name.charAt(0).toUpperCase()}
+                                      {member.name?.charAt(0)?.toUpperCase() || "?"}
                                     </AvatarFallback>
                                   </Avatar>
                                 ) : null;
@@ -1437,6 +1506,59 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {!isExploring && (
+          <Dialog
+            open={showRenameMemberDialog}
+            onOpenChange={(open) => {
+              if (!isRenamingMember) {
+                setShowRenameMemberDialog(open);
+                if (!open) {
+                  setMemberToRename(null);
+                  setRenameMemberName("");
+                }
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename Member</DialogTitle>
+                <DialogDescription>
+                  Update the member's display name for this trip.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="rename-member-name">Name</Label>
+                  <Input
+                    id="rename-member-name"
+                    value={renameMemberName}
+                    onChange={(event) => setRenameMemberName(event.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (!isRenamingMember) {
+                        setShowRenameMemberDialog(false);
+                        setMemberToRename(null);
+                        setRenameMemberName("");
+                      }
+                    }}
+                    disabled={isRenamingMember}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleConfirmRenameMember} disabled={isRenamingMember}>
+                    {isRenamingMember ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         )}
 
         {!isExploring && (
