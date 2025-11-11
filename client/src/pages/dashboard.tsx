@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check, Pencil, UserCog } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, IndianRupee, LogIn, Trash2, Download, Receipt, LogOut, Share2, Copy, Check, Pencil, UserCog, MessageCircle } from "lucide-react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Trip, BudgetItem, SpendingItem, Member } from "@shared/schema";
@@ -84,6 +84,7 @@ export default function Dashboard() {
   const [spendingAmount, setSpendingAmount] = useState("");
 
   const [isRecordingSpending, setIsRecordingSpending] = useState(false);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const isInitialMount = useRef(true);
 
   const currentMember = trip?.members.find((member) => member.email === user?.email);
@@ -748,6 +749,16 @@ export default function Dashboard() {
             </Button>
 
             <div className="flex items-center gap-2">
+              {trip && !isLoading && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsChatbotOpen(true)}
+                  data-testid="button-chatbot-header"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
+              )}
               {isCurrentUserOrganizer && !isExploring && (
                 <Button
                   variant="outline"
@@ -2024,6 +2035,9 @@ export default function Dashboard() {
               setIsGeneratingShare(false);
             }
           }}
+          showFloatingButton={false}
+          isOpen={isChatbotOpen}
+          onOpenChange={setIsChatbotOpen}
         />
       )}
     </div>

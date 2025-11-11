@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageCircle, X, ArrowLeft, Home } from "lucide-react";
+import { MessageCircle, X } from "lucide-react";
 import type { Trip, BudgetItem, SpendingItem, Member } from "@shared/schema";
 
 interface ChatMessage {
@@ -34,6 +34,9 @@ interface TripChatbotProps {
   onNavigateToBudget: () => void;
   onRemoveMember: (member: Member) => void;
   onExportPDF: () => void;
+  showFloatingButton?: boolean;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function TripChatbot({
@@ -51,8 +54,19 @@ export function TripChatbot({
   onNavigateToBudget,
   onRemoveMember,
   onExportPDF,
+  showFloatingButton = true,
+  isOpen: externalIsOpen,
+  onOpenChange,
 }: TripChatbotProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+  const setIsOpen = (open: boolean) => {
+    if (onOpenChange) {
+      onOpenChange(open);
+    } else {
+      setInternalIsOpen(open);
+    }
+  };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentFlow, setCurrentFlow] = useState<string>("main");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -95,32 +109,32 @@ export function TripChatbot({
       [
         {
           id: "budget-mgmt",
-          label: "💰 Budget Management",
+          label: "Budget Management",
           action: () => handleBudgetManagement(),
         },
         {
           id: "spending-mgmt",
-          label: "💸 Spending Management",
+          label: "Spending Management",
           action: () => handleSpendingManagement(),
         },
         {
           id: "member-mgmt",
-          label: "👥 Member Management",
+          label: "Member Management",
           action: () => handleMemberManagement(),
         },
         {
           id: "view-balance",
-          label: `📊 View Balance (₹${remaining.toFixed(2)} remaining)`,
+          label: `View Balance (₹${remaining.toFixed(2)} remaining)`,
           action: () => handleViewBalance(),
         },
         {
           id: "trip-controls",
-          label: "⚙️ Trip Settings",
+          label: "Trip Settings",
           action: () => handleTripControls(),
         },
         {
           id: "reports",
-          label: "📄 Reports & Export",
+          label: "Reports & Export",
           action: () => handleReports(),
         },
       ]
@@ -132,7 +146,7 @@ export function TripChatbot({
     addMessage("What would you like to do with budgets?", true, [
       {
         id: "add-budget",
-        label: "➕ Add New Budget Item",
+        label: "Add New Budget Item",
         action: () => {
           addMessage("Opening budget creation form...", true);
           setTimeout(() => {
@@ -143,7 +157,7 @@ export function TripChatbot({
       },
       {
         id: "view-budgets",
-        label: "👁️ View All Budgets",
+        label: "View All Budgets",
         action: () => {
           onNavigateToBudget();
           addMessage("Navigating to budget view...", true);
@@ -152,12 +166,12 @@ export function TripChatbot({
       },
       {
         id: "delete-budget",
-        label: "🗑️ Delete Budget Item",
+        label: "Delete Budget Item",
         action: () => handleDeleteBudget(),
       },
       {
         id: "back",
-        label: "⬅️ Back to Main Menu",
+        label: "Back to Main Menu",
         action: () => backToMainMenu(),
       },
     ]);
@@ -168,7 +182,7 @@ export function TripChatbot({
       addMessage("You don't have any budget items to delete yet.", true, [
         {
           id: "back",
-          label: "⬅️ Back to Budget Management",
+          label: "Back to Budget Management",
           action: () => handleBudgetManagement(),
         },
       ]);
@@ -186,7 +200,7 @@ export function TripChatbot({
             addMessage("Please confirm or cancel the deletion in the dialog above.", true, [
               {
                 id: "back",
-                label: "⬅️ Back to Main Menu",
+                label: "Back to Main Menu",
                 action: () => backToMainMenu(),
               },
             ]);
@@ -195,7 +209,7 @@ export function TripChatbot({
       })).concat([
         {
           id: "back",
-          label: "⬅️ Back to Budget Management",
+          label: "Back to Budget Management",
           action: () => handleBudgetManagement(),
         },
       ])
@@ -207,12 +221,12 @@ export function TripChatbot({
     addMessage("What would you like to do with spending?", true, [
       {
         id: "add-spending",
-        label: "➕ Record New Spending",
+        label: "Record New Spending",
         action: () => handleAddSpending(),
       },
       {
         id: "view-spending",
-        label: "👁️ View All Spending",
+        label: "View All Spending",
         action: () => {
           addMessage("Navigating to spending page...", true);
           setTimeout(() => {
@@ -223,7 +237,7 @@ export function TripChatbot({
       },
       {
         id: "back",
-        label: "⬅️ Back to Main Menu",
+        label: "Back to Main Menu",
         action: () => backToMainMenu(),
       },
     ]);
@@ -234,7 +248,7 @@ export function TripChatbot({
       addMessage("You need to create a budget item first before recording spending.", true, [
         {
           id: "create-budget",
-          label: "➕ Create Budget Item",
+          label: "Create Budget Item",
           action: () => {
             onAddBudget();
             setIsOpen(false);
@@ -242,7 +256,7 @@ export function TripChatbot({
         },
         {
           id: "back",
-          label: "⬅️ Back to Main Menu",
+          label: "Back to Main Menu",
           action: () => backToMainMenu(),
         },
       ]);
@@ -263,7 +277,7 @@ export function TripChatbot({
       })).concat([
         {
           id: "back",
-          label: "⬅️ Back to Spending Management",
+          label: "Back to Spending Management",
           action: () => handleSpendingManagement(),
         },
       ])
@@ -275,7 +289,7 @@ export function TripChatbot({
     addMessage("What would you like to do with members?", true, [
       {
         id: "invite",
-        label: "➕ Invite New Members",
+        label: "Invite New Members",
         action: () => {
           addMessage("Opening invitation form...", true);
           setTimeout(() => {
@@ -286,18 +300,18 @@ export function TripChatbot({
       },
       {
         id: "remove",
-        label: "🗑️ Remove Member",
+        label: "Remove Member",
         action: () => handleRemoveMember(),
       },
       {
         id: "view",
-        label: "👁️ View All Members",
+        label: "View All Members",
         action: () => {
           const memberList = trip.members.map(m => `${m.name} (${m.status})`).join(", ");
           addMessage(`Current members: ${memberList}`, true, [
             {
               id: "back",
-              label: "⬅️ Back to Member Management",
+              label: "Back to Member Management",
               action: () => handleMemberManagement(),
             },
           ]);
@@ -305,7 +319,7 @@ export function TripChatbot({
       },
       {
         id: "back",
-        label: "⬅️ Back to Main Menu",
+        label: "Back to Main Menu",
         action: () => backToMainMenu(),
       },
     ]);
@@ -318,7 +332,7 @@ export function TripChatbot({
       addMessage("There are no members that can be removed.", true, [
         {
           id: "back",
-          label: "⬅️ Back to Member Management",
+          label: "Back to Member Management",
           action: () => handleMemberManagement(),
         },
       ]);
@@ -336,7 +350,7 @@ export function TripChatbot({
             addMessage("Please confirm or cancel the removal in the dialog above.", true, [
               {
                 id: "back",
-                label: "⬅️ Back to Main Menu",
+                label: "Back to Main Menu",
                 action: () => backToMainMenu(),
               },
             ]);
@@ -345,7 +359,7 @@ export function TripChatbot({
       })).concat([
         {
           id: "back",
-          label: "⬅️ Back to Member Management",
+          label: "Back to Member Management",
           action: () => handleMemberManagement(),
         },
       ])
@@ -361,20 +375,20 @@ export function TripChatbot({
     const percentageSpent = totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(1) : 0;
 
     const balanceDetails = `
-📊 Balance Summary for "${trip.name}"
+Balance Summary for "${trip.name}"
 
-💰 Total Budget: ₹${totalBudget.toFixed(2)}
-💸 Total Spent: ₹${totalSpent.toFixed(2)}
-✅ Remaining: ₹${remaining.toFixed(2)}
-📈 Spent: ${percentageSpent}%
+Total Budget: ₹${totalBudget.toFixed(2)}
+Total Spent: ₹${totalSpent.toFixed(2)}
+Remaining: ₹${remaining.toFixed(2)}
+Spent: ${percentageSpent}%
 
-${remaining < 0 ? "⚠️ Warning: You've exceeded your budget!" : ""}
+${remaining < 0 ? "Warning: You've exceeded your budget!" : ""}
     `.trim();
 
     addMessage(balanceDetails, true, [
       {
         id: "view-detailed",
-        label: "📊 View Detailed Report",
+        label: "View Detailed Report",
         action: () => {
           onViewBalance();
           setIsOpen(false);
@@ -382,7 +396,7 @@ ${remaining < 0 ? "⚠️ Warning: You've exceeded your budget!" : ""}
       },
       {
         id: "back",
-        label: "⬅️ Back to Main Menu",
+        label: "Back to Main Menu",
         action: () => backToMainMenu(),
       },
     ]);
@@ -496,11 +510,11 @@ ${remaining < 0 ? "⚠️ Warning: You've exceeded your budget!" : ""}
 
   return (
     <>
-      {!isOpen && (
+      {!isOpen && showFloatingButton && (
         <Button
           size="icon"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-blue-600 hover:bg-blue-700 text-white"
           data-testid="button-chatbot-open"
         >
           <MessageCircle className="h-6 w-6" />
@@ -508,19 +522,20 @@ ${remaining < 0 ? "⚠️ Warning: You've exceeded your budget!" : ""}
       )}
 
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-96 h-[600px] shadow-2xl z-50 flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4 border-b">
-            <CardTitle className="text-lg">Trip Assistant</CardTitle>
+        <Card className="fixed bottom-6 right-6 w-96 h-[600px] shadow-2xl z-50 flex flex-col border border-blue-200 bg-blue-50">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4 border-b border-blue-700 bg-blue-600 text-white">
+            <CardTitle className="text-lg text-white">Trip Assistant</CardTitle>
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setIsOpen(false)}
               data-testid="button-chatbot-close"
+              className="text-white hover:bg-blue-500/40"
             >
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-blue-50">
             {messages.map((message) => (
               <div
                 key={message.id}
