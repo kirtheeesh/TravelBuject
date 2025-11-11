@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { TripChatbot } from "@/components/TripChatbot";
 
 const MEMBER_COLORS = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-teal-500"];
 const LIGHT_MEMBER_COLORS = ["bg-yellow-500"]; // Colors that need dark text for contrast
@@ -1968,6 +1969,63 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* Chatbot - Only show when trip is loaded */}
+      {trip && !isLoading && (
+        <TripChatbot
+          trip={trip}
+          budgetItems={budgetItems}
+          spendingItems={spendingItems}
+          onAddBudget={() => setLocation(`/trip/${tripId}/add-items`)}
+          onDeleteBudget={(item) => {
+            setItemToDelete(item);
+            setShowDeleteItemDialog(true);
+          }}
+          onAddSpending={(item) => {
+            setSelectedBudgetItem(item);
+            setShowRecordSpendingDialog(true);
+          }}
+          onInviteMembers={() => setShowInviteDialog(true)}
+          onViewBalance={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onEditTrip={() => {
+            toast({
+              title: "Coming Soon",
+              description: "Trip editing feature will be available soon!",
+            });
+          }}
+          onDeleteTrip={() => setShowDeleteDialog(true)}
+          onNavigateToSpending={() => setLocation(`/spending/${tripId}`)}
+          onNavigateToBudget={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onRemoveMember={(member) => {
+            setMemberToRemove(member);
+            setShowRemoveMemberDialog(true);
+          }}
+          onExportPDF={async () => {
+            if (!trip) throw new Error("Trip not loaded");
+            setIsGeneratingShare(true);
+            try {
+              generateTripPDF({ trip, budgetItems });
+              toast({
+                title: "PDF Generated",
+                description: "Your trip report has been downloaded.",
+              });
+            } catch (error) {
+              toast({
+                title: "Failed to generate PDF",
+                description: "Please try again later.",
+                variant: "destructive",
+              });
+              throw error;
+            } finally {
+              setIsGeneratingShare(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
