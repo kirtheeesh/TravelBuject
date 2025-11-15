@@ -1,4 +1,4 @@
-# 🌍 BkTravel Budget Manager
+# BkTravel Budget Manager
 
 A modern, mobile-friendly travel budget management application that makes it easy to track expenses and split costs with travel companions.
 
