@@ -96,13 +96,13 @@ export type InsertSpendingItem = z.infer<typeof insertSpendingItemSchema>;
 
 export const insertTripSchema = z.object({
   name: z.string().min(3, "Trip name must be at least 3 characters"),
-  memberCount: z.coerce.number().min(1).max(20),
+  memberCount: z.coerce.number().min(1).max(100).optional(),
   memberEmails: z.array(z.object({
-    name: z.string().min(1, "Name is required"),
+    name: z.string().optional().or(z.literal("")),
     email: z.string().email("Valid email is required").optional().or(z.literal("")),
   })).transform(members =>
     members.map((member, i) => ({
-      name: member.name.trim() || `Member ${i + 1}`,
+      name: member.name?.trim() || `Member ${i + 1}`,
       email: member.email || undefined,
     }))
   ),

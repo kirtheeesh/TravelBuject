@@ -749,16 +749,6 @@ export default function Dashboard() {
             </Button>
 
             <div className="flex items-center gap-2">
-              {trip && !isLoading && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setIsChatbotOpen(true)}
-                  data-testid="button-chatbot-header"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                </Button>
-              )}
               {isCurrentUserOrganizer && !isExploring && (
                 <Button
                   variant="outline"
@@ -801,6 +791,17 @@ export default function Dashboard() {
                 >
                   <Share2 className="h-4 w-4" />
                   {isGeneratingShare ? "Generating..." : "Invite by Share"}
+                </Button>
+              )}
+              {trip && !isLoading && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsChatbotOpen(true)}
+                  data-testid="button-chatbot-header"
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+                >
+                  <MessageCircle className="h-4 w-4" />
                 </Button>
               )}
               <Dialog open={showJoinDialog} onOpenChange={setShowJoinDialog}>
@@ -2039,6 +2040,18 @@ export default function Dashboard() {
           isOpen={isChatbotOpen}
           onOpenChange={setIsChatbotOpen}
         />
+      )}
+
+      {/* Mobile-only chatbot button */}
+      {trip && !isLoading && (
+        <Button
+          size="icon"
+          onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+          className="fixed bottom-20 right-4 h-12 w-12 rounded-full shadow-lg z-40 bg-blue-600 hover:bg-blue-700 text-white transition-all sm:hidden"
+          data-testid="button-chatbot-mobile"
+        >
+          <MessageCircle className="h-5 w-5" />
+        </Button>
       )}
     </div>
   );

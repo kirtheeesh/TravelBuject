@@ -128,11 +128,8 @@ export default function CreateTrip() {
     resolver: zodResolver(insertTripSchema),
     defaultValues: {
       name: "",
-      memberCount: 2,
-      memberEmails: [
-        { name: "", email: "" },
-        { name: "", email: "" }
-      ],
+      memberCount: undefined,
+      memberEmails: [],
     },
   });
 
@@ -142,16 +139,16 @@ export default function CreateTrip() {
   useEffect(() => {
     if (!user) return;
     const currentMembers = form.getValues("memberEmails");
-    if (currentMembers.length === 0) {
-      form.setValue("memberEmails", [{ name: "", email: "" }]);
+    const memberCount = form.getValues("memberCount");
+    if (memberCount && memberCount > 0) {
+      if (currentMembers.length === 0) {
+        form.setValue("memberEmails", [{ name: "", email: "" }]);
+      }
+      const selfName = user.name?.trim() || user.email || "You";
+      const selfEmail = user.email || "";
+      form.setValue("memberEmails.0.name", selfName, { shouldDirty: false, shouldTouch: false });
+      form.setValue("memberEmails.0.email", selfEmail, { shouldDirty: false, shouldTouch: false });
     }
-    if (form.getValues("memberCount") < 1) {
-      form.setValue("memberCount", 1);
-    }
-    const selfName = user.name?.trim() || user.email || "You";
-    const selfEmail = user.email || "";
-    form.setValue("memberEmails.0.name", selfName, { shouldDirty: false, shouldTouch: false });
-    form.setValue("memberEmails.0.email", selfEmail, { shouldDirty: false, shouldTouch: false });
   }, [user, form]);
 
   // Update member emails array when count changes
@@ -160,8 +157,9 @@ export default function CreateTrip() {
     form.setValue("memberCount", count);
     const currentMembers = form.getValues("memberEmails");
     if (currentMembers.length < count) {
-      // Add empty objects for new members
-      form.setValue("memberEmails", [...currentMembers, ...Array(count - currentMembers.length).fill({ name: "", email: "" })]);
+      // Add empty objects for new members - they will default to Member N during submission
+      const newMembers = Array.from({ length: count - currentMembers.length }).map(() => ({ name: "", email: "" }));
+      form.setValue("memberEmails", [...currentMembers, ...newMembers]);
     } else if (currentMembers.length > count) {
       // Remove excess members
       form.setValue("memberEmails", currentMembers.slice(0, count));
@@ -208,7 +206,7 @@ export default function CreateTrip() {
 
   const toggleAllMembers = (itemTempId: string) => {
     const item = budgetItems.find((i) => i.tempId === itemTempId);
-    if (!item) return;
+    if (!item || !memberCount) return;
 
     const allMemberIds = Array.from({ length: memberCount }, (_, i) => i.toString());
     const allSelected = item.memberIds.length === memberCount && memberCount > 0;
@@ -356,37 +354,57 @@ export default function CreateTrip() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Number of Members</FormLabel>
-                      <Select
-                        onValueChange={handleMemberCountChange}
-                        defaultValue={field.value.toString()}
-                      >
+                      <div className="flex items-center gap-2">
                         <FormControl>
-                          <SelectTrigger data-testid="select-member-count">
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="100"
+                            placeholder="Enter number of members"
+                            value={field.value || ""}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value);
+                              if (!isNaN(value) && value >= 1 && value <= 100) {
+                                handleMemberCountChange(value.toString());
+                              } else if (e.target.value === "") {
+                                form.setValue("memberCount", undefined);
+                                form.setValue("memberEmails", []);
+                              }
+                            }}
+                            data-testid="input-member-count"
+                            className="flex-1"
+                          />
                         </FormControl>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                            <SelectItem key={num} value={num.toString()}>
-                              {num} {num === 1 ? "member" : "members"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            const currentCount = form.getValues("memberCount");
+                            if (currentCount && currentCount < 100) {
+                              handleMemberCountChange((currentCount + 1).toString());
+                            }
+                          }}
+                          title="Add one more member"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Enter a number between 1 and 100</p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {Array.from({ length: memberCount }).map((_, index) => (
+                  {memberCount ? Array.from({ length: memberCount }).map((_, index) => (
                     <div key={index} className="space-y-2">
                       <FormField
                         control={form.control}
                         name={`memberEmails.${index}.name`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>{index === 0 && user ? "Member 1 (You)" : `Member ${index + 1} Name`}</FormLabel>
+                            <FormLabel>{index === 0 && user ? "Member 1 (You)" : `Member ${index + 1} Name (Optional)`}</FormLabel>
                             <div className="flex items-center gap-2">
                               <Avatar className={`h-10 w-10 ${MEMBER_COLORS[index % MEMBER_COLORS.length]}`}>
                                 <AvatarFallback className="text-white">
@@ -395,7 +413,7 @@ export default function CreateTrip() {
                               </Avatar>
                               <FormControl>
                                 <Input
-                                  placeholder={index === 0 && user ? (user.name?.trim() || user.email || "You") : `Name ${index + 1}`}
+                                  placeholder={index === 0 && user ? (user.name?.trim() || user.email || "You") : `Leave blank for Member ${index + 1}`}
                                   {...field}
                                   data-testid={`input-member-${index}-name`}
                                   readOnly={index === 0 && !!user}
@@ -426,7 +444,7 @@ export default function CreateTrip() {
                         )}
                       />
                     </div>
-                  ))}
+                  )) : null}
                 </div>
               </CardContent>
             </Card>
