@@ -1,4 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useTutorial } from "@/contexts/TutorialContext";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -9,16 +10,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plane, LogOut, LogIn } from "lucide-react";
+import { Plane, LogOut, LogIn, HelpCircle } from "lucide-react";
 import { useLocation } from "wouter";
 
 export function Header() {
   const { user, signInWithGoogle, signOut, isAuthLoading } = useAuth();
+  const { enableTutorial } = useTutorial();
   const [, setLocation] = useLocation();
 
   const handleSignOut = async () => {
     await signOut();
     setLocation("/");
+  };
+
+  const handleRestartTutorial = () => {
+    enableTutorial();
   };
 
   return (
@@ -59,6 +65,11 @@ export function Header() {
                     <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleRestartTutorial}>
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  <span>Restart Tutorial</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} data-testid="button-signout">
                   <LogOut className="mr-2 h-4 w-4" />

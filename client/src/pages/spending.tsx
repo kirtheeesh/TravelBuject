@@ -1,4 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useTutorial } from "@/contexts/TutorialContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { subscribeToTrip, subscribeToSpendingItems, deleteSpendingItem, addSpend
 import { useEffect, useState, useRef } from "react";
 import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useToast } from "@/hooks/use-toast";
+import { SpendingChatbot } from "@/components/SpendingChatbot";
 
 const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 const CHART_COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"];
@@ -36,6 +38,7 @@ export default function Spending() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { isExploring } = useAuth();
+  const { tutorialEnabled } = useTutorial();
   const tripId = params?.id;
 
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -259,6 +262,12 @@ export default function Spending() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {tutorialEnabled && (
+        <SpendingChatbot
+          tripName={trip?.name}
+        />
+      )}
 
       <main className="container mx-auto px-4 py-8 md:px-8">
         {/* Header */}

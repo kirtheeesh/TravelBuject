@@ -1,4 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useTutorial } from "@/contexts/TutorialContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,7 @@ import { generateTripPDF } from "@/lib/generate-trip-pdf";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { TripChatbot } from "@/components/TripChatbot";
+import { DashboardChatbot } from "@/components/DashboardChatbot";
 
 const MEMBER_COLORS = ["bg-red-500", "bg-blue-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-teal-500"];
 const LIGHT_MEMBER_COLORS = ["bg-yellow-500"]; // Colors that need dark text for contrast
@@ -42,6 +44,7 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user, isExploring, signInWithGoogle } = useAuth();
+  const { tutorialEnabled } = useTutorial();
   const tripId = params?.id;
   
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -733,6 +736,14 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {tutorialEnabled && (
+        <DashboardChatbot
+          tripName={trip?.name}
+          memberCount={trip?.members.length}
+          budgetItemCount={budgetItems.length}
+        />
+      )}
 
       <main className="container mx-auto px-4 py-8 md:px-8">
         {/* Header */}

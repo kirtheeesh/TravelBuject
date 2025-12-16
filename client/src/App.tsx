@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { TutorialProvider } from "@/contexts/TutorialContext";
 import { Suspense, lazy } from "react";
 
 // Lazy load page components for better performance
@@ -79,8 +80,10 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <AuthProvider>
-            <Toaster />
-            <Router />
+            <TutorialProvider>
+              <Toaster />
+              <Router />
+            </TutorialProvider>
           </AuthProvider>
         </TooltipProvider>
       </QueryClientProvider>

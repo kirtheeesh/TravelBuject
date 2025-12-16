@@ -1,4 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useTutorial } from "@/contexts/TutorialContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,8 @@ import { subscribeToTrips, getTrips, rejectInvitation, joinTrip } from "@/lib/mo
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { OnboardingTutorial } from "@/components/OnboardingTutorial";
+import { HomeChatbot } from "@/components/HomeChatbot";
 
 // Member color palette for avatars
 const MEMBER_COLORS = [
@@ -26,6 +29,7 @@ const MEMBER_COLORS = [
 
 export default function Home() {
   const { user, isExploring } = useAuth();
+  const { tutorialEnabled, isLoading: tutorialLoading } = useTutorial();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -38,6 +42,7 @@ export default function Home() {
   const [isRejecting, setIsRejecting] = useState<string | null>(null);
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [isJoiningByCode, setIsJoiningByCode] = useState(false);
+  const [tutorialVisible, setTutorialVisible] = useState(false);
 
   const pendingInvitations = useMemo(() => {
     if (!user?.email) return [];
@@ -191,6 +196,18 @@ export default function Home() {
     }
   }, [isLoading, hasPendingJoin, hasShownJoinToast, justJoinedTrip, toast]);
 
+  useEffect(() => {
+    if (!isLoading && !tutorialLoading && !isExploring && user?.id && tutorialEnabled && !tutorialVisible) {
+      if (visibleTrips.length === 0) {
+        setTutorialVisible(true);
+      }
+    }
+  }, [isLoading, tutorialLoading, isExploring, user?.id, tutorialEnabled, tutorialVisible, visibleTrips.length]);
+
+  const handleTutorialComplete = () => {
+    setTutorialVisible(false);
+  };
+
   const handleRejectInvitation = async (tripId: string, invitationCode: string) => {
     if (!user?.id) return;
     try {
@@ -263,6 +280,17 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {tutorialEnabled && !tutorialVisible && (
+        <HomeChatbot tripsCount={visibleTrips.length} />
+      )}
+
+      {tutorialVisible && (
+        <OnboardingTutorial 
+          onComplete={handleTutorialComplete}
+          onStartTrip={handleCreateTrip}
+        />
+      )}
 
       <main className="container mx-auto px-4 py-8 md:px-8">
         {/* Welcome Section */}

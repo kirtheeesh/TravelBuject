@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTutorial } from "@/contexts/TutorialContext";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,8 @@ import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { createTrip } from "@/lib/mongodb-operations";
+import { CreateTripTutorial } from "@/components/CreateTripTutorial";
+import { CreateTripChatbot } from "@/components/CreateTripChatbot";
 
 const MEMBER_COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 const CATEGORIES = ["Food", "Accommodation", "Transport", "Entertainment", "Shopping", "Miscellaneous"] as const;
@@ -119,10 +122,14 @@ type BudgetItemInput = Omit<InsertBudgetItem, "tripId"> & { tempId: string };
 
 export default function CreateTrip() {
   const { user, isExploring, signInWithGoogle } = useAuth();
+  const { tutorialEnabled, isLoading: tutorialLoading } = useTutorial();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [budgetItems, setBudgetItems] = useState<BudgetItemInput[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [chatbotOpen, setChatbotOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState<"tripName" | "memberCount" | "memberDetails" | "budgetItems" | "review">("tripName");
 
   const form = useForm<z.infer<typeof insertTripSchema>>({
     resolver: zodResolver(insertTripSchema),
@@ -150,6 +157,26 @@ export default function CreateTrip() {
       form.setValue("memberEmails.0.email", selfEmail, { shouldDirty: false, shouldTouch: false });
     }
   }, [user, form]);
+
+
+
+  useEffect(() => {
+    const tripName = form.getValues("name");
+    const memberCount = form.getValues("memberCount");
+    const memberEmails = form.getValues("memberEmails");
+
+    if (!tripName || tripName.length < 3) {
+      setCurrentStep("tripName");
+    } else if (!memberCount || memberCount === 0) {
+      setCurrentStep("memberCount");
+    } else if (!memberEmails || memberEmails.length === 0) {
+      setCurrentStep("memberDetails");
+    } else if (budgetItems.length === 0) {
+      setCurrentStep("budgetItems");
+    } else {
+      setCurrentStep("review");
+    }
+  }, [form.watch("name"), form.watch("memberCount"), form.watch("memberEmails"), budgetItems.length]);
 
   // Update member emails array when count changes
   const handleMemberCountChange = (value: string) => {
@@ -288,12 +315,38 @@ export default function CreateTrip() {
     }
 
     console.log("✅ All validation passed. Submitting...");
-    createTripMutation.mutate({ ...data, budgetItems });
+    
+    // Ensure the first member (owner) has the user's actual name
+    const memberEmailsWithOwnerName = data.memberEmails.map((member, index) => {
+      if (index === 0 && user?.name) {
+        return { ...member, name: user.name };
+      }
+      return member;
+    });
+    
+    createTripMutation.mutate({ ...data, memberEmails: memberEmailsWithOwnerName, budgetItems });
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {showTutorial && (
+        <CreateTripTutorial 
+          onComplete={() => setShowTutorial(false)}
+        />
+      )}
+
+      {tutorialEnabled && (
+        <CreateTripChatbot
+          currentStep={currentStep}
+          tripName={form.getValues("name")}
+          memberCount={form.getValues("memberCount")}
+          hasBudgetItems={budgetItems.length > 0}
+          isOpen={chatbotOpen}
+          onOpenChange={setChatbotOpen}
+        />
+      )}
 
       <main className="container mx-auto max-w-4xl px-4 py-8 md:px-8">
         <div className="mb-8">

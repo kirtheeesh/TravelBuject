@@ -116,6 +116,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { name, members, budgetItems } = req.body;
       const userId = req.session!.userId!;
+      const userName = req.session!.userName;
+      const userEmail = req.session!.userEmail;
 
       const tripId = randomUUID();
       const tripsCollection = getTripsCollection();
@@ -129,14 +131,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isOwner = index === 0 || baseStatus === "owner";
         const id = member.id ?? index.toString();
         const color = member.color || MEMBER_COLORS[index % MEMBER_COLORS.length];
+        
+        // Use the logged-in user's name and email for the first member (owner) if name is missing
+        const memberName = (isOwner && !member.name) ? (userName || userEmail || "You") : member.name;
+        const memberEmail = (isOwner && !member.email) ? userEmail : member.email;
+        
         return {
           ...member,
+          name: memberName,
+          email: memberEmail,
           id,
           color,
           status: isOwner ? "owner" : baseStatus,
-          invitedAt: !isOwner && member.email ? Date.now() : member.invitedAt,
+          invitedAt: !isOwner && memberEmail ? Date.now() : member.invitedAt,
           joinedAt: isOwner || baseStatus === "joined" ? Date.now() : undefined,
-          invitationCode: !isOwner && member.email ? member.invitationCode ?? randomUUID() : undefined,
+          invitationCode: !isOwner && memberEmail ? member.invitationCode ?? randomUUID() : undefined,
         };
       });
 
